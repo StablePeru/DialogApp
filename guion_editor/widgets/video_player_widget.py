@@ -1,24 +1,35 @@
 # guion_editor/widgets/video_player_widget.py
 
-from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QPushButton, QSlider, QLabel,
-    QFileDialog, QShortcut, QMessageBox, QHBoxLayout
-)
-from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
-from PyQt5.QtMultimediaWidgets import QVideoWidget
+import logging
 from PyQt5.QtCore import QUrl, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QKeySequence, QFont
-
-import logging
+from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
+from PyQt5.QtMultimediaWidgets import QVideoWidget
+from PyQt5.QtWidgets import (
+    QWidget,
+    QVBoxLayout,
+    QPushButton,
+    QSlider,
+    QLabel,
+    QFileDialog,
+    QShortcut,
+    QMessageBox,
+    QHBoxLayout,
+)
 
 
 class VideoPlayerWidget(QWidget):
     """
     Widget personalizado para reproducir videos y controlar marcas de tiempo.
     """
-    inOutSignal = pyqtSignal(str, int)  # Señal para enviar 'IN'/'OUT' y la posición en ms
-    detachRequested = pyqtSignal(QWidget)  # Señal para solicitar la separación del widget
-    setPositionSignal = pyqtSignal(int)  # Señal para establecer la posición del video
+
+    in_out_signal = pyqtSignal(
+        str, int
+    )  # Señal para enviar 'IN'/'OUT' y la posición en ms
+    detach_requested = pyqtSignal(
+        QWidget
+    )  # Señal para solicitar la separación del widget
+    set_position_signal = pyqtSignal(int)  # Señal para establecer la posición del video
 
     def __init__(self):
         super().__init__()
@@ -38,14 +49,14 @@ class VideoPlayerWidget(QWidget):
         Configura el sistema de logging para la clase.
         """
         self.logger = logging.getLogger(__name__)
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-        handler.setFormatter(formatter)
         if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            )
+            handler.setFormatter(formatter)
             self.logger.addHandler(handler)
-        self.logger.setLevel(logging.DEBUG)
+            self.logger.setLevel(logging.DEBUG)
 
     def init_ui(self) -> None:
         """
@@ -61,15 +72,15 @@ class VideoPlayerWidget(QWidget):
         """
         Configura el reproductor de video y sus conexiones.
         """
-        self.mediaPlayer = QMediaPlayer(None, QMediaPlayer.VideoSurface)
-        self.videoWidget = QVideoWidget()
-        self.mediaPlayer.setVideoOutput(self.videoWidget)
-        self.mediaPlayer.stateChanged.connect(self.update_play_button)
-        self.mediaPlayer.positionChanged.connect(self.update_slider)
-        self.mediaPlayer.durationChanged.connect(self.update_slider_range)
-        self.mediaPlayer.volumeChanged.connect(self.update_volume_slider)
-        self.mediaPlayer.mediaStatusChanged.connect(self.on_media_status_changed)
-        self.mediaPlayer.error.connect(self.on_media_error)
+        self.media_player = QMediaPlayer(None, QMediaPlayer.VideoSurface)
+        self.video_widget = QVideoWidget()
+        self.media_player.setVideoOutput(self.video_widget)
+        self.media_player.stateChanged.connect(self.update_play_button)
+        self.media_player.positionChanged.connect(self.update_slider)
+        self.media_player.durationChanged.connect(self.update_slider_range)
+        self.media_player.volumeChanged.connect(self.update_volume_slider)
+        self.media_player.mediaStatusChanged.connect(self.on_media_status_changed)
+        self.media_player.error.connect(self.on_media_error)
 
     def setup_controls(self) -> None:
         """
@@ -79,55 +90,60 @@ class VideoPlayerWidget(QWidget):
         button_font = QFont()
         button_font.setPointSize(12)  # Tamaño de fuente más grande
 
-        self.playButton = QPushButton("Play/Pausa")
-        self.playButton.setFont(button_font)
-        self.playButton.clicked.connect(self.toggle_play)
+        self.play_button = QPushButton("Play/Pausa")
+        self.play_button.setFont(button_font)
+        self.play_button.clicked.connect(self.toggle_play)
 
-        self.rewindButton = QPushButton("Retroceder")
-        self.rewindButton.setFont(button_font)
-        self.rewindButton.clicked.connect(lambda: self.change_position(-5000))
+        self.rewind_button = QPushButton("Retroceder")
+        self.rewind_button.setFont(button_font)
+        self.rewind_button.clicked.connect(lambda: self.change_position(-5000))
 
-        self.forwardButton = QPushButton("Avanzar")
-        self.forwardButton.setFont(button_font)
-        self.forwardButton.clicked.connect(lambda: self.change_position(5000))
+        self.forward_button = QPushButton("Avanzar")
+        self.forward_button.setFont(button_font)
+        self.forward_button.clicked.connect(lambda: self.change_position(5000))
 
-        self.detachButton = QPushButton("Detachar")
-        self.detachButton.setFont(button_font)
-        self.detachButton.clicked.connect(self.detach_widget)  # Conectar el botón
+        self.detach_button = QPushButton("Detachar")
+        self.detach_button.setFont(button_font)
+        self.detach_button.clicked.connect(self.detach_widget)  # Conectar el botón
 
         # Slider de posición del video
         self.slider = QSlider(Qt.Horizontal)
         self.slider.sliderMoved.connect(self.set_position)
 
         # Botón de volumen
-        self.volumeButton = QPushButton("Volumen")
-        self.volumeButton.setFont(button_font)
-        self.volumeButton.clicked.connect(self.toggle_volume_slider)
+        self.volume_button = QPushButton("Volumen")
+        self.volume_button.setFont(button_font)
+        self.volume_button.clicked.connect(self.toggle_volume_slider)
 
         # Slider de volumen vertical, inicialmente oculto
-        self.volumeSliderVertical = QSlider(Qt.Vertical)
-        self.volumeSliderVertical.setRange(0, 100)
-        self.volumeSliderVertical.setValue(100)
-        self.volumeSliderVertical.setVisible(False)
-        self.volumeSliderVertical.valueChanged.connect(self.set_volume)
+        self.volume_slider_vertical = QSlider(Qt.Vertical)
+        self.volume_slider_vertical.setRange(0, 100)
+        self.volume_slider_vertical.setValue(100)
+        self.volume_slider_vertical.setVisible(False)
+        self.volume_slider_vertical.valueChanged.connect(self.set_volume)
 
         # Etiqueta de Time Code
-        self.timeCodeLabel = QLabel("00:00:00:00")
-        self.timeCodeLabel.setAlignment(Qt.AlignCenter)
-        self.timeCodeLabel.setStyleSheet("font-size: 12px;")  # Reduce tamaño de fuente
-        self.timeCodeLabel.setFixedHeight(20)  # Fija la altura para limitar el espacio
+        self.time_code_label = QLabel("00:00:00:00")
+        self.time_code_label.setAlignment(Qt.AlignCenter)
+        self.time_code_label.setStyleSheet(
+            "font-size: 12px;"
+        )  # Reduce tamaño de fuente
+        self.time_code_label.setFixedHeight(
+            20
+        )  # Fija la altura para limitar el espacio
 
         # Botones IN y OUT con mayor tamaño de fuente
-        self.inButton = QPushButton("IN")
-        self.inButton.setFont(button_font)
-        self.inButton.clicked.connect(self.mark_in)
+        self.in_button = QPushButton("IN")
+        self.in_button.setFont(button_font)
+        self.in_button.clicked.connect(self.mark_in)
 
-        self.outButton = QPushButton("OUT")
-        self.outButton.setFont(button_font)
-        self.outButton.clicked.connect(self.mark_out)
+        self.out_button = QPushButton("OUT")
+        self.out_button.setFont(button_font)
+        self.out_button.clicked.connect(self.mark_out)
 
         # Estilosheets para mejorar la apariencia
-        self.volumeSliderVertical.setStyleSheet("""
+        self.volume_slider_vertical.setStyleSheet(
+            """
             QSlider::handle:vertical {
                 background: #5A5A5A;
                 border: 1px solid #5A5A5A;
@@ -140,10 +156,12 @@ class VideoPlayerWidget(QWidget):
                 width: 8px;
                 border-radius: 4px;
             }
-        """)
+        """
+        )
 
         # Estilos para los botones
-        self.playButton.setStyleSheet("""
+        self.play_button.setStyleSheet(
+            """
             QPushButton {
                 background-color: #4CAF50;
                 color: white;
@@ -158,8 +176,10 @@ class VideoPlayerWidget(QWidget):
             QPushButton:hover {
                 background-color: #45a049;
             }
-        """)
-        self.rewindButton.setStyleSheet("""
+        """
+        )
+        self.rewind_button.setStyleSheet(
+            """
             QPushButton {
                 background-color: #2196F3;
                 color: white;
@@ -174,8 +194,10 @@ class VideoPlayerWidget(QWidget):
             QPushButton:hover {
                 background-color: #0b7dda;
             }
-        """)
-        self.forwardButton.setStyleSheet("""
+        """
+        )
+        self.forward_button.setStyleSheet(
+            """
             QPushButton {
                 background-color: #2196F3;
                 color: white;
@@ -190,8 +212,10 @@ class VideoPlayerWidget(QWidget):
             QPushButton:hover {
                 background-color: #0b7dda;
             }
-        """)
-        self.detachButton.setStyleSheet("""
+        """
+        )
+        self.detach_button.setStyleSheet(
+            """
             QPushButton {
                 background-color: #f44336;
                 color: white;
@@ -206,8 +230,10 @@ class VideoPlayerWidget(QWidget):
             QPushButton:hover {
                 background-color: #da190b;
             }
-        """)
-        self.inButton.setStyleSheet("""
+        """
+        )
+        self.in_button.setStyleSheet(
+            """
             QPushButton {
                 background-color: #FF9800;
                 color: white;
@@ -222,8 +248,10 @@ class VideoPlayerWidget(QWidget):
             QPushButton:hover {
                 background-color: #e68900;
             }
-        """)
-        self.outButton.setStyleSheet("""
+        """
+        )
+        self.out_button.setStyleSheet(
+            """
             QPushButton {
                 background-color: #FF9800;
                 color: white;
@@ -238,7 +266,8 @@ class VideoPlayerWidget(QWidget):
             QPushButton:hover {
                 background-color: #e68900;
             }
-        """)
+        """
+        )
 
     def setup_layouts(self) -> None:
         """
@@ -249,47 +278,47 @@ class VideoPlayerWidget(QWidget):
         layout.setSpacing(10)
 
         # Video widget ocupa ~80% del espacio
-        layout.addWidget(self.videoWidget, 8)
+        layout.addWidget(self.video_widget, 8)
 
         # Slider de posición ocupa ~10% (stretch factor 1)
         layout.addWidget(self.slider, 1)
 
         # Layout horizontal para los botones
-        buttonsLayout = QHBoxLayout()
-        buttonsLayout.setSpacing(10)
+        buttons_layout = QHBoxLayout()
+        buttons_layout.setSpacing(10)
 
         # Botón de Detachar a la izquierda
-        buttonsLayout.addWidget(self.detachButton)
+        buttons_layout.addWidget(self.detach_button)
 
         # Botón de Play/Pausa
-        buttonsLayout.addWidget(self.playButton)
+        buttons_layout.addWidget(self.play_button)
 
         # Botón de Retroceder
-        buttonsLayout.addWidget(self.rewindButton)
+        buttons_layout.addWidget(self.rewind_button)
 
         # Botón de Avanzar
-        buttonsLayout.addWidget(self.forwardButton)
+        buttons_layout.addWidget(self.forward_button)
 
         # Botón IN
-        buttonsLayout.addWidget(self.inButton)
+        buttons_layout.addWidget(self.in_button)
 
         # Botón OUT
-        buttonsLayout.addWidget(self.outButton)
+        buttons_layout.addWidget(self.out_button)
 
         # Espaciador para empujar el botón de volumen a la derecha
-        buttonsLayout.addStretch()
+        buttons_layout.addStretch()
 
         # Botón de volumen
-        buttonsLayout.addWidget(self.volumeButton)
+        buttons_layout.addWidget(self.volume_button)
 
         # Slider de volumen vertical, oculto inicialmente
-        buttonsLayout.addWidget(self.volumeSliderVertical)
+        buttons_layout.addWidget(self.volume_slider_vertical)
 
         # Agregar el layout de botones al layout principal con stretch factor 1
-        layout.addLayout(buttonsLayout, 1)
+        layout.addLayout(buttons_layout, 1)
 
         # Etiqueta de Time Code ocupa ~5% (stretch factor 1)
-        layout.addWidget(self.timeCodeLabel, 1)
+        layout.addWidget(self.time_code_label, 1)
 
         self.setLayout(layout)
 
@@ -337,7 +366,7 @@ class VideoPlayerWidget(QWidget):
         """
         Maneja la lógica cuando se presiona la tecla F11.
         """
-        current_time = self.mediaPlayer.position()
+        current_time = self.media_player.position()
         self.logger.debug(f"F11 pressed: current_time={current_time}")
         self.f11_pressed = True
         self.last_f11_press_time = current_time
@@ -348,7 +377,7 @@ class VideoPlayerWidget(QWidget):
         """
         Maneja la lógica cuando se suelta la tecla F11.
         """
-        current_time = self.mediaPlayer.position()
+        current_time = self.media_player.position()
         self.logger.debug(f"F11 released: current_time={current_time}")
         self.f11_pressed = False
         time_elapsed = current_time - self.last_f11_press_time
@@ -361,7 +390,7 @@ class VideoPlayerWidget(QWidget):
         """
         Verifica si se deben marcar los eventos IN/OUT basándose en el tiempo transcurrido.
         """
-        current_time = self.mediaPlayer.position()
+        current_time = self.media_player.position()
         if self.last_f11_press_time is not None:
             time_elapsed = current_time - self.last_f11_press_time
 
@@ -378,9 +407,9 @@ class VideoPlayerWidget(QWidget):
         Marca el tiempo 'IN' y emite la señal correspondiente.
         """
         try:
-            position_ms = self.mediaPlayer.position()
+            position_ms = self.media_player.position()
             self.logger.debug(f"mark_in: position_ms={position_ms}")
-            self.inOutSignal.emit("IN", position_ms)
+            self.in_out_signal.emit("IN", position_ms)
         except Exception as e:
             self.logger.error(f"Error en mark_in: {e}")
 
@@ -389,9 +418,9 @@ class VideoPlayerWidget(QWidget):
         Marca el tiempo 'OUT' y emite la señal correspondiente.
         """
         try:
-            position_ms = self.mediaPlayer.position()
+            position_ms = self.media_player.position()
             self.logger.debug(f"mark_out: position_ms={position_ms}")
-            self.inOutSignal.emit("OUT", position_ms)
+            self.in_out_signal.emit("OUT", position_ms)
         except Exception as e:
             self.logger.error(f"Error en mark_out: {e}")
 
@@ -399,10 +428,10 @@ class VideoPlayerWidget(QWidget):
         """
         Alterna la reproducción del video entre Play y Pausa.
         """
-        if self.mediaPlayer.state() == QMediaPlayer.PlayingState:
-            self.mediaPlayer.pause()
+        if self.media_player.state() == QMediaPlayer.PlayingState:
+            self.media_player.pause()
         else:
-            self.mediaPlayer.play()
+            self.media_player.play()
 
     def change_position(self, change: int) -> None:
         """
@@ -411,9 +440,9 @@ class VideoPlayerWidget(QWidget):
         Args:
             change (int): Cambio en milisegundos (positivo para avanzar, negativo para retroceder).
         """
-        new_position = self.mediaPlayer.position() + change
-        new_position = max(0, min(new_position, self.mediaPlayer.duration()))
-        self.mediaPlayer.setPosition(new_position)
+        new_position = self.media_player.position() + change
+        new_position = max(0, min(new_position, self.media_player.duration()))
+        self.media_player.setPosition(new_position)
 
     def set_position(self, position: int) -> None:
         """
@@ -422,7 +451,7 @@ class VideoPlayerWidget(QWidget):
         Args:
             position (int): Nueva posición en milisegundos.
         """
-        self.mediaPlayer.setPosition(position)
+        self.media_player.setPosition(position)
 
     def set_volume(self, volume: int) -> None:
         """
@@ -431,7 +460,7 @@ class VideoPlayerWidget(QWidget):
         Args:
             volume (int): Volumen entre 0 y 100.
         """
-        self.mediaPlayer.setVolume(volume)
+        self.media_player.setVolume(volume)
 
     def update_volume_slider(self, volume: int) -> None:
         """
@@ -440,7 +469,7 @@ class VideoPlayerWidget(QWidget):
         Args:
             volume (int): Nuevo valor de volumen.
         """
-        self.volumeSliderVertical.setValue(volume)
+        self.volume_slider_vertical.setValue(volume)
 
     def update_play_button(self, state: QMediaPlayer.State) -> None:
         """
@@ -449,7 +478,9 @@ class VideoPlayerWidget(QWidget):
         Args:
             state (QMediaPlayer.State): Nuevo estado del reproductor.
         """
-        self.playButton.setText("Pausa" if state == QMediaPlayer.PlayingState else "Play")
+        self.play_button.setText(
+            "Pausa" if state == QMediaPlayer.PlayingState else "Play"
+        )
 
     def update_slider(self, position: int) -> None:
         """
@@ -473,12 +504,14 @@ class VideoPlayerWidget(QWidget):
         """
         Actualiza la etiqueta de Time Code con la posición actual del video.
         """
-        position = self.mediaPlayer.position()
+        position = self.media_player.position()
         hours, remainder = divmod(position, 3600000)
         minutes, remainder = divmod(remainder, 60000)
         seconds, msecs = divmod(remainder, 1000)
         frames = int(msecs / (1000 / 25))
-        self.timeCodeLabel.setText(f"{hours:02}:{minutes:02}:{seconds:02}:{frames:02}")
+        self.time_code_label.setText(
+            f"{hours:02}:{minutes:02}:{seconds:02}:{frames:02}"
+        )
 
     def get_current_time_code(self) -> str:
         """
@@ -487,7 +520,7 @@ class VideoPlayerWidget(QWidget):
         Returns:
             str: Time code actual.
         """
-        position = self.mediaPlayer.position()
+        position = self.media_player.position()
         hours, remainder = divmod(position, 3600000)
         minutes, remainder = divmod(remainder, 60000)
         seconds, msecs = divmod(remainder, 1000)
@@ -502,8 +535,8 @@ class VideoPlayerWidget(QWidget):
             video_path (str): Ruta al archivo de video.
         """
         try:
-            self.mediaPlayer.setMedia(QMediaContent(QUrl.fromLocalFile(video_path)))
-            self.mediaPlayer.play()
+            self.media_player.setMedia(QMediaContent(QUrl.fromLocalFile(video_path)))
+            self.media_player.play()
             self.logger.debug(f"Video cargado desde: {video_path}")
         except Exception as e:
             self.logger.error(f"Error al cargar el video: {e}")
@@ -528,8 +561,13 @@ class VideoPlayerWidget(QWidget):
         Args:
             error (QMediaPlayer.Error): Código de error del media player.
         """
-        self.logger.error(f"Error en la reproducción del video: {self.mediaPlayer.errorString()}")
-        QMessageBox.warning(self, "Error de Reproducción", self.mediaPlayer.errorString())
+        if error != QMediaPlayer.NoError:
+            self.logger.error(
+                f"Error en la reproducción del video: {self.media_player.errorString()}"
+            )
+            QMessageBox.warning(
+                self, "Error de Reproducción", self.media_player.errorString()
+            )
 
     def set_position_public(self, milliseconds: int) -> None:
         """
@@ -539,27 +577,37 @@ class VideoPlayerWidget(QWidget):
             milliseconds (int): Nueva posición en milisegundos.
         """
         try:
-            if 0 <= milliseconds <= self.mediaPlayer.duration():
-                self.mediaPlayer.setPosition(milliseconds)
+            if 0 <= milliseconds <= self.media_player.duration():
+                self.media_player.setPosition(milliseconds)
                 self.logger.debug(f"Video position set to {milliseconds} ms")
             else:
-                self.logger.warning(f"Position {milliseconds} ms fuera del rango del video")
-                QMessageBox.warning(self, "Error", "La posición especificada está fuera del rango del video.")
+                self.logger.warning(
+                    f"Position {milliseconds} ms fuera del rango del video"
+                )
+                QMessageBox.warning(
+                    self,
+                    "Error",
+                    "La posición especificada está fuera del rango del video.",
+                )
         except Exception as e:
             self.logger.error(f"Error al establecer la posición del video: {e}")
-            QMessageBox.warning(self, "Error", f"Error al establecer la posición del video: {str(e)}")
+            QMessageBox.warning(
+                self, "Error", f"Error al establecer la posición del video: {str(e)}"
+            )
 
     def detach_widget(self) -> None:
         """
         Emitir una señal para solicitar que el widget sea detachado en una nueva ventana.
         """
-        self.detachRequested.emit(self)
+        self.detach_requested.emit(self)
 
     def toggle_volume_slider(self) -> None:
         """
         Alternar la visibilidad del slider de volumen vertical.
         """
-        self.volumeSliderVertical.setVisible(not self.volumeSliderVertical.isVisible())
+        self.volume_slider_vertical.setVisible(
+            not self.volume_slider_vertical.isVisible()
+        )
 
     def update_fonts(self, font_size: int) -> None:
         """
@@ -572,17 +620,19 @@ class VideoPlayerWidget(QWidget):
         font.setPointSize(font_size)
 
         # Actualizar botones
-        self.playButton.setFont(font)
-        self.rewindButton.setFont(font)
-        self.forwardButton.setFont(font)
-        self.detachButton.setFont(font)
-        self.inButton.setFont(font)
-        self.outButton.setFont(font)
-        self.volumeButton.setFont(font)
+        self.play_button.setFont(font)
+        self.rewind_button.setFont(font)
+        self.forward_button.setFont(font)
+        self.detach_button.setFont(font)
+        self.in_button.setFont(font)
+        self.out_button.setFont(font)
+        self.volume_button.setFont(font)
 
         # Actualizar Time Code
         tc_font = QFont()
-        tc_font.setPointSize(max(font_size - 2, 8))  # Tamaño ligeramente menor para el TC
-        self.timeCodeLabel.setFont(tc_font)
+        tc_font.setPointSize(
+            max(font_size - 2, 8)
+        )  # Tamaño ligeramente menor para el TC
+        self.time_code_label.setFont(tc_font)
 
         self.logger.debug(f"Fuentes actualizadas a tamaño {font_size} pt")
