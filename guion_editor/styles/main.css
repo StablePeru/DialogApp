@@ -1,0 +1,102 @@
+/* styles/main.css */
+
+/* Estilos generales para QPushButton */
+QPushButton {
+    border: none;
+    padding: 10px;
+    text-align: center;
+    text-decoration: none;
+    font-size: 14px;
+    margin: 4px 2px;
+    border-radius: 8px;
+    color: white; /* Color de texto predeterminado */
+}
+
+/* Estilos para play_button */
+QPushButton#play_button {
+    background-color: #4CAF50;
+}
+
+QPushButton#play_button:hover {
+    background-color: #45a049;
+}
+
+/* Estilos para rewind_button */
+QPushButton#rewind_button {
+    background-color: #2196F3;
+}
+
+QPushButton#rewind_button:hover {
+    background-color: #0b7dda;
+}
+
+/* Estilos para forward_button */
+QPushButton#forward_button {
+    background-color: #2196F3;
+}
+
+QPushButton#forward_button:hover {
+    background-color: #0b7dda;
+}
+
+/* Estilos para detach_button */
+QPushButton#detach_button {
+    background-color: #f44336;
+}
+
+QPushButton#detach_button:hover {
+    background-color: #da190b;
+}
+
+/* Estilos para in_button */
+QPushButton#in_button {
+    background-color: #FF9800;
+}
+
+QPushButton#in_button:hover {
+    background-color: #e68900;
+}
+
+/* Estilos para out_button */
+QPushButton#out_button {
+    background-color: #FF9800;
+}
+
+QPushButton#out_button:hover {
+    background-color: #e68900;
+}
+
+/* Estilos para volume_button */
+QPushButton#volume_button {
+    background-color: #607D8B;
+}
+
+QPushButton#volume_button:hover {
+    background-color: #546E7A;
+}
+
+/* Estilos para QSlider horizontal (position_slider) */
+QSlider#position_slider {
+    height: 20px;
+}
+
+/* Estilos para QSlider vertical (volume_slider_vertical) */
+QSlider#volume_slider_vertical {
+    background: #B0B0B0;
+    width: 8px;
+    border-radius: 4px;
+}
+
+QSlider#volume_slider_vertical QSlider::handle:vertical {
+    background: #5A5A5A;
+    border: 1px solid #5A5A5A;
+    height: 20px;
+    margin: -5px 0;
+    border-radius: 5px;
+}
+
+/* Estilos para QLabel (time_code_label) */
+QLabel#time_code_label {
+    font-size: 12px;
+    height: 20px;
+}
