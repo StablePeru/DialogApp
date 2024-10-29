@@ -159,7 +159,7 @@ class MainWindow(QMainWindow):
             if detached_widget:
                 detached_widget.setParent(None)
                 self.videoWindow = VideoWindow(detached_widget)
-                self.videoWindow.closeDetached.connect(self.attach_video)
+                self.videoWindow.close_detached.connect(self.attach_video)
                 self.videoWindow.show()
                 logger.debug("VideoWindow creado y mostrado.")
 
