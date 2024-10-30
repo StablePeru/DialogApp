@@ -75,6 +75,15 @@ QPushButton#volume_button:hover {
     background-color: #546E7A;
 }
 
+/* Estilos para attach_button */
+QPushButton#attach_button {
+    background-color: #9C27B0; /* Color púrpura */
+}
+
+QPushButton#attach_button:hover {
+    background-color: #8E24AA;
+}
+
 /* Estilos para QSlider horizontal (position_slider) */
 QSlider#position_slider {
     height: 20px;
@@ -97,24 +106,11 @@ QSlider#volume_slider_vertical QSlider::handle:vertical {
 
 /* Estilos para QLabel (time_code_label) */
 QLabel#time_code_label {
-    font-size: 12px;
+    font-size: 25px;
     height: 20px;
 }
 
-
-/* Estilos para attach_button */
-QPushButton#attach_button {
-    background-color: #9C27B0; /* Color púrpura */
-    border: none;
-    padding: 10px;
-    text-align: center;
-    text-decoration: none;
-    font-size: 14px;
-    margin: 4px 2px;
-    border-radius: 8px;
-    color: white;
-}
-
-QPushButton#attach_button:hover {
-    background-color: #8E24AA;
+/* Estilos para video_widget */
+QVideoWidget#video_widget {
+    background-color: black; /* Fondo negro para el área de video */
 }

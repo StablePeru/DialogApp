@@ -4,6 +4,7 @@ import logging
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QSpinBox, QPushButton, QHBoxLayout
 )
+from PyQt5.QtCore import Qt
 
 
 class ConfigDialog(QDialog):

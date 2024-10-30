@@ -72,7 +72,7 @@ class TableWindow(QWidget):
     def setup_table_widget(self, layout):
         self.table_widget = CustomTableWidget()
         self.table_widget.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table_widget.setEditTriggers(QAbstractItemView.NoEditTriggers)  # Deshabilitar edición directa
+        self.table_widget.setEditTriggers(QAbstractItemView.DoubleClicked)  # Habilitar edición al hacer doble clic
         layout.addWidget(self.table_widget)
         
         # Configurar delegados personalizados
