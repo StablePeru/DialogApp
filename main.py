@@ -2,10 +2,11 @@
 
 import sys
 import logging
+import traceback
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QWidget, QSplitter, QAction,
-    QFileDialog, QMessageBox, QDialog
+    QFileDialog, QMessageBox, QDialog, QInputDialog
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QKeySequence
@@ -14,9 +15,18 @@ from guion_editor.widgets.video_player_widget import VideoPlayerWidget
 from guion_editor.widgets.table_window import TableWindow
 from guion_editor.widgets.video_window import VideoWindow
 from guion_editor.widgets.config_dialog import ConfigDialog
+from guion_editor.widgets.shortcut_config_dialog import ShortcutConfigDialog
+from guion_editor.utils.shortcut_manager import ShortcutManager
 
 # Configuración del logger
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(
+    level=logging.DEBUG,  # Asegúrate de que el nivel esté en DEBUG
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler("app_debug.log", encoding='utf-8')  # Opcional: Guardar logs en un archivo
+    ]
+)
 logger = logging.getLogger(__name__)
 
 
@@ -43,23 +53,36 @@ class MainWindow(QMainWindow):
         self.splitter.addWidget(self.tableWindow)
         layout.addWidget(self.splitter)
 
-        # Crear la barra de menú
-        self.create_menu_bar()
+        # Diccionario para almacenar las acciones
+        self.actions = {}
+
+        # Crear la barra de menú **sin** el menú de shortcuts
+        self.create_menu_bar(exclude_shortcuts=True)
+        logger.debug("Barra de menú creada sin el menú de shortcuts.")
+
+        # Inicializar ShortcutManager **después** de crear la barra de menú
+        self.shortcut_manager = ShortcutManager(self)
+        logger.debug("ShortcutManager inicializado y asignado a 'self.shortcut_manager'.")
+
+        # Crear el menú de shortcuts **después** de inicializar ShortcutManager
+        self.create_shortcuts_menu(self.menuBar())
 
         # Conectar señales
         self.videoPlayerWidget.detach_requested.connect(self.detach_video)
-        self.tableWindow.in_out_signal.connect(self.handle_set_position)  # Corrección aquí
+        self.tableWindow.in_out_signal.connect(self.handle_set_position)
 
         # Variable para la ventana independiente
         self.videoWindow = None
 
         logger.debug("MainWindow inicializado correctamente.")
 
-    def create_menu_bar(self):
+    def create_menu_bar(self, exclude_shortcuts=False):
         menuBar = self.menuBar()
         self.create_file_menu(menuBar)
         self.create_edit_menu(menuBar)
         self.create_config_menu(menuBar)
+        if not exclude_shortcuts:
+            self.create_shortcuts_menu(menuBar)
 
     def create_file_menu(self, menuBar):
         fileMenu = menuBar.addMenu("&Archivo")
@@ -76,6 +99,8 @@ class MainWindow(QMainWindow):
         for name, slot, shortcut in actions:
             action = self.create_action(name, slot, shortcut)
             fileMenu.addAction(action)
+            self.actions[name] = action  # Añadir al diccionario de acciones
+            logger.debug(f"Acción añadida al menú Archivo: '{name}' con shortcut '{shortcut}'.")
 
     def create_edit_menu(self, menuBar):
         editMenu = menuBar.addMenu("&Editar")
@@ -93,18 +118,50 @@ class MainWindow(QMainWindow):
         for name, slot, shortcut in actions:
             action = self.create_action(name, slot, shortcut)
             editMenu.addAction(action)
+            self.actions[name] = action  # Añadir al diccionario de acciones
+            logger.debug(f"Acción añadida al menú Editar: '{name}' con shortcut '{shortcut}'.")
 
     def create_config_menu(self, menuBar):
         configMenu = menuBar.addMenu("&Configuración")
 
         openConfigAction = self.create_action("&Configuración", self.open_config_dialog)
         configMenu.addAction(openConfigAction)
+        self.actions["&Configuración"] = openConfigAction  # Añadir al diccionario de acciones
+        logger.debug("Acción añadida al menú Configuración: '&Configuración'.")
+
+    def create_shortcuts_menu(self, menuBar):
+        shortcutsMenu = menuBar.addMenu("&Shortcuts")
+
+        # Submenú para configurar shortcuts
+        configure_shortcuts_action = self.create_action("&Configurar Shortcuts", self.open_shortcut_config_dialog)
+        shortcutsMenu.addAction(configure_shortcuts_action)
+        self.actions["&Configurar Shortcuts"] = configure_shortcuts_action  # Añadir al diccionario de acciones
+        logger.debug("Acción añadida al menú Shortcuts: '&Configurar Shortcuts'.")
+
+        # Submenú para cargar configuraciones existentes
+        load_config_menu = shortcutsMenu.addMenu("Cargar Configuración")
+        for config_name in self.shortcut_manager.get_available_configs():
+            # Usar una función lambda con argumentos por defecto para evitar problemas de cierre
+            action = self.create_action(
+                config_name,
+                lambda checked, name=config_name: self.shortcut_manager.apply_shortcuts(name)
+            )
+            load_config_menu.addAction(action)
+            self.actions[config_name] = action  # Añadir al diccionario de acciones
+            logger.debug(f"Acción añadida al submenú Cargar Configuración: '{config_name}'.")
+
+        # Opción para eliminar configuraciones
+        delete_config_action = self.create_action("Eliminar Configuración", self.delete_configuration)
+        shortcutsMenu.addAction(delete_config_action)
+        self.actions["Eliminar Configuración"] = delete_config_action  # Añadir al diccionario de acciones
+        logger.debug("Acción añadida al menú Shortcuts: 'Eliminar Configuración'.")
 
     def create_action(self, name, slot, shortcut=None):
         action = QAction(name, self)
         if shortcut:
             action.setShortcut(QKeySequence(shortcut))
         action.triggered.connect(slot)
+        logger.debug(f"Acción creada: '{name}' con shortcut '{shortcut}'.")
         return action
 
     def open_config_dialog(self):
@@ -141,12 +198,51 @@ class MainWindow(QMainWindow):
         # Actualizar fuentes en VideoPlayerWidget
         self.videoPlayerWidget.update_fonts(self.font_size)
 
+    def open_shortcut_config_dialog(self):
+        dialog = ShortcutConfigDialog(self.shortcut_manager)
+        dialog.exec_()
+        # Aplicar los shortcuts después de configurar
+        self.shortcut_manager.apply_shortcuts(self.shortcut_manager.current_config)
+
+    def delete_configuration(self):
+        configs = self.shortcut_manager.get_available_configs()
+        if "default" in configs:
+            configs.remove("default")  # No permitir eliminar 'default'
+        if not configs:
+            QMessageBox.information(self, "Información", "No hay configuraciones para eliminar.")
+            return
+        config, ok = QInputDialog.getItem(
+            self,
+            "Eliminar Configuración",
+            "Seleccione una configuración para eliminar:",
+            configs,
+            0,
+            False
+        )
+        if ok and config:
+            confirm = QMessageBox.question(
+                self,
+                "Confirmar",
+                f"¿Está seguro de que desea eliminar la configuración '{config}'?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if confirm == QMessageBox.Yes:
+                if self.shortcut_manager.delete_configuration(config):
+                    QMessageBox.information(
+                        self,
+                        "Éxito",
+                        f"Configuración '{config}' eliminada exitosamente."
+                    )
+                    self.create_shortcuts_menu(menuBar=self.menuBar())  # Actualizar el menú
+                    logger.debug(f"Configuración '{config}' eliminada y menú actualizado.")
+
     def open_video(self):
         videoPath, _ = QFileDialog.getOpenFileName(
-            self, "Abrir Video", "", "Video Files (*.mp4 *.avi)"
+            self, "Abrir Video", "", "Video Files (*.mp4 *.avi *.mkv)"
         )
         if videoPath:
             self.videoPlayerWidget.load_video(videoPath)
+            logger.debug(f"Video cargado desde: {videoPath}")
 
     def detach_video(self, video_widget):
         logger.debug("Intentando detachar el VideoPlayerWidget.")
@@ -168,7 +264,9 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error al detachar el video: {e}")
             QMessageBox.warning(
-                self, "Error", f"Error al detachar el video: {str(e)}"
+                self,
+                "Error",
+                f"Error al detachar el video: {str(e)}"
             )
 
     def attach_video(self):
@@ -188,7 +286,9 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error al adjuntar el video: {e}")
             QMessageBox.warning(
-                self, "Error", f"Error al adjuntar el video: {str(e)}"
+                self,
+                "Error",
+                f"Error al adjuntar el video: {str(e)}"
             )
 
     def handle_set_position(self, action, position_ms):
@@ -210,8 +310,19 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error al establecer la posición del video: {e}")
             QMessageBox.warning(
-                self, "Error", f"Error al establecer la posición del video: {str(e)}"
+                self,
+                "Error",
+                f"Error al establecer la posición del video: {str(e)}"
             )
+
+def handle_exception(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        # Permitir que Ctrl+C termine la aplicación
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    error_message = ''.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+    logger.error(f"Excepción no manejada: {error_message}")
+    QMessageBox.critical(None, "Error Inesperado", "Ocurrió un error inesperado. Consulte los logs para más detalles.")
 
 
 def main():
