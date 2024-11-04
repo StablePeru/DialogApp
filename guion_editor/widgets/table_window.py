@@ -3,7 +3,7 @@
 import json
 import logging
 
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import pyqtSignal, QObject, QEvent, Qt
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
     QWidget, QTableWidgetItem, QTextEdit, QFileDialog, QAbstractItemView,
@@ -32,12 +32,35 @@ class TableWindow(QWidget):
     # Señal para comunicar el establecimiento de la posición del video
     in_out_signal = pyqtSignal(str, int)  # Emitirá 'IN'/'OUT' y la posición en milisegundos
 
+    class KeyPressFilter(QObject):
+        def __init__(self, table_window):
+            super().__init__()
+            self.table_window = table_window
+
+        def eventFilter(self, obj, event):
+            if event.type() == QEvent.KeyPress:
+                if event.key() == Qt.Key_F11 and not event.isAutoRepeat():
+                    self.table_window.video_player_widget.start_out_timer()
+                    return True  # Evento manejado
+            elif event.type() == QEvent.KeyRelease:
+                if event.key() == Qt.Key_F11 and not event.isAutoRepeat():
+                    self.table_window.video_player_widget.stop_out_timer()
+                    return True  # Evento manejado
+            return False  # Evento no manejado
+
     def __init__(self, video_player_widget):
         super().__init__()
         self.setWindowTitle("Editor de Guion")
         self.setGeometry(100, 100, 800, 600)
         self.video_player_widget = video_player_widget  # Almacenar referencia al VideoPlayerWidget
         self.video_player_widget.in_out_signal.connect(self.update_in_out)
+        self.video_player_widget.out_released.connect(self.select_next_row_and_set_in)
+        # Instalar el event filter en TableWindow
+        self.key_filter = self.KeyPressFilter(self)
+        self.installEventFilter(self.key_filter)
+
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocus()
         self.dataframe = pd.DataFrame()
 
         self.setup_ui()
@@ -315,6 +338,26 @@ class TableWindow(QWidget):
         except Exception as e:
             self.handle_exception(e, "Error al intercambiar filas")
 
+    def keyPressEvent(self, event) -> None:
+        """
+        Maneja el evento de presionar una tecla en TableWindow.
+        """
+        if event.key() == Qt.Key_F11 and not event.isAutoRepeat():
+            self.video_player_widget.start_out_timer()
+            event.accept()  # Evita que el evento se propague más
+        else:
+            super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event) -> None:
+        """
+        Maneja el evento de soltar una tecla en TableWindow.
+        """
+        if event.key() == Qt.Key_F11 and not event.isAutoRepeat():
+            self.video_player_widget.stop_out_timer()
+            event.accept()  # Evita que el evento se propague más
+        else:
+            super().keyReleaseEvent(event)
+
     def handle_ctrl_click(self, row):
         """
         Maneja el evento de Ctrl + clic en una fila.
@@ -392,50 +435,6 @@ class TableWindow(QWidget):
         except Exception as e:
             self.handle_exception(e, "Error al importar desde Excel")
 
-    def load_from_excel(self, path):
-        try:
-            df = pd.read_excel(path)
-            logger.debug(f"Datos importados desde Excel: {df.head()}")
-            required_columns = ['IN', 'OUT', 'PERSONAJE', 'DIÁLOGO']
-            if not all(col in df.columns for col in required_columns):
-                raise ValueError("Faltan columnas requeridas en los datos.")
-            self.dataframe = df
-            self.populate_table()
-            QMessageBox.information(self, "Éxito", "Datos importados correctamente desde Excel.")
-            logger.info("Datos importados correctamente desde Excel.")
-        except Exception as e:
-            self.handle_exception(e, "Error al cargar desde Excel")
-
-    def save_to_json(self):
-        try:
-            path, _ = QFileDialog.getSaveFileName(self, "Guardar archivo JSON", "", "Archivos JSON (*.json)")
-            if path:
-                data = self.dataframe.to_dict(orient='records')
-                with open(path, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, ensure_ascii=False, indent=4)
-                QMessageBox.information(self, "Éxito", "Datos guardados correctamente en JSON.")
-                logger.info(f"Datos guardados en JSON en: {path}")
-        except Exception as e:
-            self.handle_exception(e, "Error al guardar en JSON")
-
-    def load_from_json(self):
-        try:
-            path, _ = QFileDialog.getOpenFileName(self, "Abrir archivo JSON", "", "Archivos JSON (*.json)")
-            if path:
-                with open(path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                df = pd.DataFrame(data)
-                logger.debug(f"Datos cargados desde JSON: {df.head()}")
-                required_columns = ['IN', 'OUT', 'PERSONAJE', 'DIÁLOGO']
-                if not all(col in df.columns for col in required_columns):
-                    raise ValueError("Faltan columnas requeridas en los datos.")
-                self.dataframe = df
-                self.populate_table()
-                QMessageBox.information(self, "Éxito", "Datos cargados correctamente desde JSON.")
-                logger.info("Datos cargados correctamente desde JSON.")
-        except Exception as e:
-            self.handle_exception(e, "Error al cargar desde JSON")
-
     def split_intervention(self):
         """
         Funcionalidad para separar una intervención en dos filas basándose en la selección de texto.
@@ -508,68 +507,13 @@ class TableWindow(QWidget):
         except Exception as e:
             self.handle_exception(e, "Error al separar intervención")
 
-    def merge_interventions(self):
-        """
-        Funcionalidad para juntar dos intervenciones consecutivas del mismo personaje en una sola fila.
-        Shortcut: Alt+J
-        """
-        try:
-            selected_row = self.table_widget.currentRow()
-            if selected_row == -1:
-                QMessageBox.warning(self, "Juntar Intervenciones", "Por favor, selecciona una fila para juntar.")
-                return
-
-            if selected_row >= self.table_widget.rowCount() - 1:
-                QMessageBox.warning(self, "Juntar Intervenciones", "No hay una segunda fila para juntar.")
-                return
-
-            personaje_current = self.dataframe.at[selected_row, 'PERSONAJE']
-            personaje_next = self.dataframe.at[selected_row + 1, 'PERSONAJE']
-
-            if personaje_current != personaje_next:
-                QMessageBox.warning(self, "Juntar Intervenciones", "Las filas seleccionadas no tienen el mismo personaje.")
-                return
-
-            # Obtener diálogos
-            dialog_current_widget = self.table_widget.cellWidget(selected_row, 3)
-            dialog_next_widget = self.table_widget.cellWidget(selected_row + 1, 3)
-            if not dialog_current_widget or not dialog_next_widget:
-                QMessageBox.warning(self, "Juntar Intervenciones", "No hay diálogos para juntar.")
-                return
-
-            dialog_current = dialog_current_widget.toPlainText().strip()
-            dialog_next = dialog_next_widget.toPlainText().strip()
-
-            if not dialog_current and not dialog_next:
-                QMessageBox.warning(self, "Juntar Intervenciones", "Ambos diálogos están vacíos.")
-                return
-
-            # Merge the dialogues with a space
-            merged_dialog = f"{dialog_current} {dialog_next}".strip()
-
-            # Actualizar el diálogo de la primera fila
-            dialog_current_widget.blockSignals(True)
-            dialog_current_widget.setPlainText(merged_dialog)
-            dialog_current_widget.blockSignals(False)
-            self.dataframe.at[selected_row, 'DIÁLOGO'] = merged_dialog
-            self.adjust_row_height(selected_row)
-
-            # Eliminar la segunda fila
-            self.table_widget.removeRow(selected_row + 1)
-            self.dataframe = self.dataframe.drop(selected_row + 1).reset_index(drop=True)
-
-            logger.info(f"Intervenciones de la fila {selected_row} y {selected_row + 1} juntadas.")
-
-            QMessageBox.information(self, "Juntar Intervenciones", "Las intervenciones han sido juntadas exitosamente.")
-        except Exception as e:
-            self.handle_exception(e, "Error al juntar intervenciones")
 
     def update_in_out(self, action, position_ms):
         """
         Actualiza los campos IN y OUT en la tabla basándose en los códigos de tiempo recibidos.
         """
         try:
-            if not action or not position_ms:
+            if not action or position_ms is None:
                 logger.warning("Datos de in_out_signal incompletos.")
                 return
 
@@ -592,16 +536,28 @@ class TableWindow(QWidget):
                     item.setText(time_code)
                     self.dataframe.at[selected_row, 'OUT'] = time_code
                     logger.debug(f"Actualizado OUT en fila {selected_row} a {time_code}")
-                self.select_next_row_and_set_in(position_ms)
+                # No realizar el salto aquí
             else:
                 logger.warning(f"Tipo de acción in_out desconocido: {action}")
                 QMessageBox.warning(self, "Error", f"Tipo de acción in_out desconocido: {action}")
         except Exception as e:
             self.handle_exception(e, "Error en update_in_out")
 
-    def select_next_row_and_set_in(self, current_out_ms):
+
+    def select_next_row_and_set_in(self):
+        """
+        Selecciona la siguiente fila y establece el IN basado en el OUT actual.
+        """
         try:
-            next_row = self.table_widget.currentRow() + 1
+            current_row = self.table_widget.currentRow()
+            if current_row == -1:
+                logger.warning("No hay fila actual seleccionada para saltar a la siguiente.")
+                return
+
+            current_out_time = self.dataframe.at[current_row, 'OUT']
+            current_out_ms = self.convert_time_code_to_milliseconds(current_out_time)
+
+            next_row = current_row + 1
             if next_row < self.table_widget.rowCount():
                 self.table_widget.selectRow(next_row)
                 item = self.table_widget.item(next_row, 0)
@@ -612,8 +568,11 @@ class TableWindow(QWidget):
                 self.adjust_row_height(next_row)
                 self.table_widget.scrollToItem(self.table_widget.item(next_row, 0), QAbstractItemView.PositionAtCenter)
                 logger.debug(f"Establecido IN en la fila {next_row} a {time_code}")
+            else:
+                logger.info("No hay más filas para saltar.")
         except Exception as e:
             self.handle_exception(e, "Error al seleccionar la siguiente fila")
+
 
     def convert_time_code_to_milliseconds(self, time_code):
         """
@@ -647,36 +606,6 @@ class TableWindow(QWidget):
             logger.error(f"Error al convertir milisegundos a time code: {e}")
             return "00:00:00:00"
 
-    def export_to_excel(self):
-        try:
-            path, _ = QFileDialog.getSaveFileName(self, "Guardar archivo", "", "Archivos Excel (*.xlsx)")
-            if path:
-                self.save_to_excel(path)
-                QMessageBox.information(self, "Éxito", "Datos exportados correctamente a Excel.")
-                logger.info(f"Datos exportados a Excel en: {path}")
-        except Exception as e:
-            self.handle_exception(e, "Error al exportar a Excel")
-
-    def save_to_excel(self, path):
-        try:
-            # Actualizar el DataFrame con los diálogos actuales
-            for row in range(self.table_widget.rowCount()):
-                dialog_widget = self.table_widget.cellWidget(row, 3)
-                if dialog_widget:
-                    self.dataframe.at[row, 'DIÁLOGO'] = dialog_widget.toPlainText()
-            self.dataframe.to_excel(path, index=False)
-            logger.debug("Datos guardados correctamente en Excel.")
-        except Exception as e:
-            self.handle_exception(e, "Error al guardar en Excel")
-            raise e  # Será manejado por el método que llama
-
-    def import_from_excel(self):
-        try:
-            path, _ = QFileDialog.getOpenFileName(self, "Abrir archivo Excel", "", "Archivos Excel (*.xlsx)")
-            if path:
-                self.load_from_excel(path)
-        except Exception as e:
-            self.handle_exception(e, "Error al importar desde Excel")
 
     def load_from_excel(self, path):
         try:
@@ -691,108 +620,6 @@ class TableWindow(QWidget):
             logger.info("Datos importados correctamente desde Excel.")
         except Exception as e:
             self.handle_exception(e, "Error al cargar desde Excel")
-
-    def save_to_json(self):
-        try:
-            path, _ = QFileDialog.getSaveFileName(self, "Guardar archivo JSON", "", "Archivos JSON (*.json)")
-            if path:
-                data = self.dataframe.to_dict(orient='records')
-                with open(path, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, ensure_ascii=False, indent=4)
-                QMessageBox.information(self, "Éxito", "Datos guardados correctamente en JSON.")
-                logger.info(f"Datos guardados en JSON en: {path}")
-        except Exception as e:
-            self.handle_exception(e, "Error al guardar en JSON")
-
-    def load_from_json(self):
-        try:
-            path, _ = QFileDialog.getOpenFileName(self, "Abrir archivo JSON", "", "Archivos JSON (*.json)")
-            if path:
-                with open(path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                df = pd.DataFrame(data)
-                logger.debug(f"Datos cargados desde JSON: {df.head()}")
-                required_columns = ['IN', 'OUT', 'PERSONAJE', 'DIÁLOGO']
-                if not all(col in df.columns for col in required_columns):
-                    raise ValueError("Faltan columnas requeridas en los datos.")
-                self.dataframe = df
-                self.populate_table()
-                QMessageBox.information(self, "Éxito", "Datos cargados correctamente desde JSON.")
-                logger.info("Datos cargados correctamente desde JSON.")
-        except Exception as e:
-            self.handle_exception(e, "Error al cargar desde JSON")
-
-    def split_intervention(self):
-        """
-        Funcionalidad para separar una intervención en dos filas basándose en la selección de texto.
-        Shortcut: Alt+I
-        """
-        try:
-            selected_row = self.table_widget.currentRow()
-            if selected_row == -1:
-                QMessageBox.warning(self, "Separar Intervención", "Por favor, selecciona una fila para separar.")
-                return
-
-            dialog_widget = self.table_widget.cellWidget(selected_row, 3)
-            if not dialog_widget:
-                QMessageBox.warning(self, "Separar Intervención", "No hay diálogo para separar.")
-                return
-
-            cursor = dialog_widget.textCursor()
-            if cursor.hasSelection():
-                position = cursor.selectionEnd()
-            else:
-                position = cursor.position()
-
-            text = dialog_widget.toPlainText()
-            if position >= len(text):
-                QMessageBox.warning(self, "Separar Intervención", "No hay texto para separar después de la posición seleccionada.")
-                return
-
-            # Split the text
-            before = text[:position]
-            after = text[position:]
-
-            # Update current dialog
-            dialog_widget.blockSignals(True)
-            dialog_widget.setPlainText(before)
-            dialog_widget.blockSignals(False)
-            self.dataframe.at[selected_row, 'DIÁLOGO'] = before
-            self.adjust_row_height(selected_row)
-
-            # Insert a new row below
-            self.table_widget.insertRow(selected_row + 1)
-
-            # Crear elementos de las celdas con la misma fuente que las filas anteriores
-            in_item = self.create_table_item("00:00:00:00")
-            out_item = self.create_table_item("00:00:00:00")
-            personaje = self.dataframe.at[selected_row, 'PERSONAJE']
-            personaje_item = self.create_table_item(personaje)
-
-            self.table_widget.setItem(selected_row + 1, 0, in_item)
-            self.table_widget.setItem(selected_row + 1, 1, out_item)
-            self.table_widget.setItem(selected_row + 1, 2, personaje_item)
-
-            # Crear el QTextEdit para el diálogo
-            new_dialog_widget = self.create_text_edit(after, selected_row + 1, 3)
-            self.table_widget.setCellWidget(selected_row + 1, 3, new_dialog_widget)
-
-            self.adjust_row_height(selected_row + 1)
-
-            # Insertar la nueva fila en el DataFrame
-            new_row = {
-                'IN': '00:00:00:00',
-                'OUT': '00:00:00:00',
-                'PERSONAJE': personaje,
-                'DIÁLOGO': after
-            }
-            upper_df = self.dataframe.iloc[:selected_row + 1] if selected_row >= 0 else pd.DataFrame()
-            lower_df = self.dataframe.iloc[selected_row + 1:] if selected_row + 1 < self.dataframe.shape[0] else pd.DataFrame()
-            new_df = pd.DataFrame([new_row])
-            self.dataframe = pd.concat([upper_df, new_df, lower_df], ignore_index=True)
-            logger.info(f"Intervención separada en la fila {selected_row} en dos filas.")
-        except Exception as e:
-            self.handle_exception(e, "Error al separar intervención")
 
     def merge_interventions(self):
         """
@@ -849,102 +676,6 @@ class TableWindow(QWidget):
             QMessageBox.information(self, "Juntar Intervenciones", "Las intervenciones han sido juntadas exitosamente.")
         except Exception as e:
             self.handle_exception(e, "Error al juntar intervenciones")
-
-    def update_in_out(self, action, position_ms):
-        """
-        Actualiza los campos IN y OUT en la tabla basándose en los códigos de tiempo recibidos.
-        """
-        try:
-            if not action or not position_ms:
-                logger.warning("Datos de in_out_signal incompletos.")
-                return
-
-            selected_row = self.table_widget.currentRow()
-            if selected_row == -1:
-                logger.warning("No hay fila seleccionada para actualizar IN/OUT.")
-                QMessageBox.warning(self, "Error", "No hay fila seleccionada para actualizar IN/OUT.")
-                return
-
-            time_code = self.convert_milliseconds_to_time_code(position_ms)
-            if action.upper() == "IN":
-                item = self.table_widget.item(selected_row, 0)
-                if item:
-                    item.setText(time_code)
-                    self.dataframe.at[selected_row, 'IN'] = time_code
-                    logger.debug(f"Actualizado IN en fila {selected_row} a {time_code}")
-            elif action.upper() == "OUT":
-                item = self.table_widget.item(selected_row, 1)
-                if item:
-                    item.setText(time_code)
-                    self.dataframe.at[selected_row, 'OUT'] = time_code
-                    logger.debug(f"Actualizado OUT en fila {selected_row} a {time_code}")
-                self.select_next_row_and_set_in(position_ms)
-            else:
-                logger.warning(f"Tipo de acción in_out desconocido: {action}")
-                QMessageBox.warning(self, "Error", f"Tipo de acción in_out desconocido: {action}")
-        except Exception as e:
-            self.handle_exception(e, "Error en update_in_out")
-
-    def select_next_row_and_set_in(self, current_out_ms):
-        try:
-            next_row = self.table_widget.currentRow() + 1
-            if next_row < self.table_widget.rowCount():
-                self.table_widget.selectRow(next_row)
-                item = self.table_widget.item(next_row, 0)
-                if item:
-                    time_code = self.convert_milliseconds_to_time_code(current_out_ms)
-                    item.setText(time_code)
-                    self.dataframe.at[next_row, 'IN'] = time_code
-                self.adjust_row_height(next_row)
-                self.table_widget.scrollToItem(self.table_widget.item(next_row, 0), QAbstractItemView.PositionAtCenter)
-                logger.debug(f"Establecido IN en la fila {next_row} a {time_code}")
-        except Exception as e:
-            self.handle_exception(e, "Error al seleccionar la siguiente fila")
-
-    def export_to_excel(self):
-        try:
-            path, _ = QFileDialog.getSaveFileName(self, "Guardar archivo", "", "Archivos Excel (*.xlsx)")
-            if path:
-                self.save_to_excel(path)
-                QMessageBox.information(self, "Éxito", "Datos exportados correctamente a Excel.")
-                logger.info(f"Datos exportados a Excel en: {path}")
-        except Exception as e:
-            self.handle_exception(e, "Error al exportar a Excel")
-
-    def save_to_excel(self, path):
-        try:
-            # Actualizar el DataFrame con los diálogos actuales
-            for row in range(self.table_widget.rowCount()):
-                dialog_widget = self.table_widget.cellWidget(row, 3)
-                if dialog_widget:
-                    self.dataframe.at[row, 'DIÁLOGO'] = dialog_widget.toPlainText()
-            self.dataframe.to_excel(path, index=False)
-            logger.debug("Datos guardados correctamente en Excel.")
-        except Exception as e:
-            self.handle_exception(e, "Error al guardar en Excel")
-            raise e  # Será manejado por el método que llama
-
-    def import_from_excel(self):
-        try:
-            path, _ = QFileDialog.getOpenFileName(self, "Abrir archivo Excel", "", "Archivos Excel (*.xlsx)")
-            if path:
-                self.load_from_excel(path)
-        except Exception as e:
-            self.handle_exception(e, "Error al importar desde Excel")
-
-    def load_from_excel(self, path):
-        try:
-            df = pd.read_excel(path)
-            logger.debug(f"Datos importados desde Excel: {df.head()}")
-            required_columns = ['IN', 'OUT', 'PERSONAJE', 'DIÁLOGO']
-            if not all(col in df.columns for col in required_columns):
-                raise ValueError("Faltan columnas requeridas en los datos.")
-            self.dataframe = df
-            self.populate_table()
-            QMessageBox.information(self, "Éxito", "Datos importados correctamente desde Excel.")
-            logger.info("Datos importados correctamente desde Excel.")
-        except Exception as e:
-            self.handle_exception(e, "Error al cargar desde Excel")
 
     def save_to_json(self):
         try:

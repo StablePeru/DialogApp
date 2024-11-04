@@ -1,5 +1,3 @@
-# guion_editor/widgets/video_player_widget.py
-
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton, QSlider, QLabel,
     QFileDialog, QShortcut, QMessageBox, QHBoxLayout
@@ -18,6 +16,7 @@ class VideoPlayerWidget(QWidget):
     Widget personalizado para reproducir videos y controlar marcas de tiempo.
     """
     in_out_signal = pyqtSignal(str, int)  # Señal para enviar 'IN'/'OUT' y la posición en ms
+    out_released = pyqtSignal()  # Señal para la liberación de F11
     detach_requested = pyqtSignal(QWidget)  # Señal para solicitar la separación del widget
     set_position_signal = pyqtSignal(int)  # Señal para establecer la posición del video
 
@@ -28,11 +27,11 @@ class VideoPlayerWidget(QWidget):
         self.load_stylesheet()
         self.setup_shortcuts()
         self.setup_timers()
-        self.last_f11_press_time = None
         self.f11_pressed = False
-        self.frame_interval_timer = QTimer()
-        self.frame_interval_timer.setSingleShot(True)
-        self.frame_interval_timer.timeout.connect(self.check_frame_interval)
+        self.out_timer = QTimer(self)
+        self.out_timer.setInterval(40)  # Actualiza cada 40 ms (~25 fps)
+        self.out_timer.timeout.connect(self.mark_out)
+        self.out_timer.setSingleShot(False)
         self.logger.debug("VideoPlayerWidget inicializado correctamente.")
 
     def setup_logging(self) -> None:
@@ -58,6 +57,7 @@ class VideoPlayerWidget(QWidget):
         self.setup_controls()
         self.setup_layouts()
         self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocus()  # Asegura que el widget tenga el foco al iniciar
 
     def setup_video_player(self) -> None:
         """
@@ -145,6 +145,9 @@ class VideoPlayerWidget(QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(10)
 
+        # Etiqueta de Time Code ocupa ~5% (stretch factor 1)
+        layout.addWidget(self.time_code_label, 1)
+
         # Video widget ocupa ~80% del espacio
         layout.addWidget(self.video_widget, 8)
 
@@ -185,9 +188,6 @@ class VideoPlayerWidget(QWidget):
         # Agregar el layout de botones al layout principal con stretch factor 1
         layout.addLayout(buttons_layout, 1)
 
-        # Etiqueta de Time Code ocupa ~5% (stretch factor 1)
-        layout.addWidget(self.time_code_label, 1)
-
         self.setLayout(layout)
 
     def load_stylesheet(self) -> None:
@@ -215,6 +215,7 @@ class VideoPlayerWidget(QWidget):
             "F7": lambda: self.change_position(-5000),
             "F9": lambda: self.change_position(5000),
             "F10": self.mark_in,
+            # Removemos F11 de aquí ya que lo estamos manejando manualmente en keyPressEvent y keyReleaseEvent
         }
         for key, slot in shortcuts.items():
             QShortcut(QKeySequence(key), self, slot)
@@ -228,63 +229,22 @@ class VideoPlayerWidget(QWidget):
         self.timer.timeout.connect(self.update_time_code)
         self.timer.start()
 
-    def keyPressEvent(self, event) -> None:
+    def start_out_timer(self):
         """
-        Maneja el evento de presionar una tecla.
+        Inicia el temporizador para marcar 'OUT' mientras se mantiene presionado F11.
         """
-        if event.key() == Qt.Key_F11 and not event.isAutoRepeat():
-            self.handle_f11_press()
-        else:
-            super().keyPressEvent(event)
+        if not self.out_timer.isActive():
+            self.out_timer.start()
+            self.logger.debug("F11 presionado: iniciando actualización de OUT.")
 
-    def keyReleaseEvent(self, event) -> None:
+    def stop_out_timer(self):
         """
-        Maneja el evento de soltar una tecla.
+        Detiene el temporizador para marcar 'OUT' y emite la señal para saltar a la siguiente línea.
         """
-        if event.key() == Qt.Key_F11 and not event.isAutoRepeat():
-            self.handle_f11_release()
-        else:
-            super().keyReleaseEvent(event)
-
-    def handle_f11_press(self) -> None:
-        """
-        Maneja la lógica cuando se presiona la tecla F11.
-        """
-        current_time = self.media_player.position()
-        self.logger.debug(f"F11 pressed: current_time={current_time}")
-        self.f11_pressed = True
-        self.last_f11_press_time = current_time
-        if not self.frame_interval_timer.isActive():
-            self.frame_interval_timer.start(40)  # Aproximadamente 1 frame a 25 fps
-
-    def handle_f11_release(self) -> None:
-        """
-        Maneja la lógica cuando se suelta la tecla F11.
-        """
-        current_time = self.media_player.position()
-        self.logger.debug(f"F11 released: current_time={current_time}")
-        self.f11_pressed = False
-        time_elapsed = current_time - self.last_f11_press_time
-        if time_elapsed >= 80:  # 2 frames a 25 fps
-            self.mark_out()
-        else:
-            self.frame_interval_timer.start(80 - time_elapsed)
-
-    def check_frame_interval(self) -> None:
-        """
-        Verifica si se deben marcar los eventos IN/OUT basándose en el tiempo transcurrido.
-        """
-        current_time = self.media_player.position()
-        if self.last_f11_press_time is not None:
-            time_elapsed = current_time - self.last_f11_press_time
-
-            if not self.f11_pressed and time_elapsed >= 80:  # 2 frames a 25 fps
-                self.mark_out()
-                self.last_f11_press_time = None
-            elif self.f11_pressed:
-                self.frame_interval_timer.start(40)  # Revisar nuevamente en 1 frame
-            else:
-                self.frame_interval_timer.start(80 - time_elapsed)
+        if self.out_timer.isActive():
+            self.out_timer.stop()
+            self.logger.debug("F11 soltado: deteniendo actualización de OUT y solicitando salto a la siguiente línea.")
+            self.out_released.emit()
 
     def mark_in(self) -> None:
         """
