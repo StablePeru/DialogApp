@@ -1,10 +1,10 @@
 /resumen.md
 /Squema.md
 /app_debug.log
-/env
-/dist
-/build
+/env/
+/dist/
+/build/
 /__pycache__
-/tests
-/resources
+/tests/
+/resources/
 
