@@ -32,10 +32,14 @@ def leer_guion(docx_file):
         guion = []
         personaje_actual = None
 
+        # Lista de encabezados comunes que queremos filtrar
+        encabezados_excluir = ["IZENBURUA", "ATOLA", "KARTELA", "NUMB CHUCKS 1A"]
+
         for para in doc.paragraphs:
             texto = para.text.strip()
             if texto:
-                if texto.isupper():
+                # Filtrar encabezados
+                if texto.isupper() and texto not in encabezados_excluir and len(texto.split()) <= 5:
                     personaje_actual = texto
                 elif personaje_actual:
                     dialogo_ajustado = ajustar_dialogo(texto)
@@ -45,7 +49,8 @@ def leer_guion(docx_file):
                         'PERSONAJE': personaje_actual,
                         'DIÁLOGO': dialogo_ajustado
                     })
-                    personaje_actual = None
+                    # No reiniciar personaje_actual aquí, en caso de que haya más líneas del mismo personaje
         return guion
     except Exception as e:
         warnings.warn(f"Error en leer_guion: {e}", PendingDeprecationWarning)
+
