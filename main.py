@@ -1,7 +1,6 @@
 # main.py
 
 import sys
-import logging
 import traceback
 
 from PyQt5.QtWidgets import (
@@ -17,18 +16,6 @@ from guion_editor.widgets.video_window import VideoWindow
 from guion_editor.widgets.config_dialog import ConfigDialog
 from guion_editor.widgets.shortcut_config_dialog import ShortcutConfigDialog
 from guion_editor.utils.shortcut_manager import ShortcutManager
-
-# Configuración del logger
-logging.basicConfig(
-    level=logging.DEBUG,  # Asegúrate de que el nivel esté en DEBUG
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("app_debug.log", encoding='utf-8')  # Opcional: Guardar logs en un archivo
-    ]
-)
-logger = logging.getLogger(__name__)
-
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -56,15 +43,13 @@ class MainWindow(QMainWindow):
         # Diccionario para almacenar las acciones
         self.actions = {}
 
-        # Crear la barra de menú **sin** el menú de shortcuts
+        # Crear la barra de menú sin el menú de shortcuts
         self.create_menu_bar(exclude_shortcuts=True)
-        logger.debug("Barra de menú creada sin el menú de shortcuts.")
 
-        # Inicializar ShortcutManager **después** de crear la barra de menú
+        # Inicializar ShortcutManager después de crear la barra de menú
         self.shortcut_manager = ShortcutManager(self)
-        logger.debug("ShortcutManager inicializado y asignado a 'self.shortcut_manager'.")
 
-        # Crear el menú de shortcuts **después** de inicializar ShortcutManager
+        # Crear el menú de shortcuts después de inicializar ShortcutManager
         self.create_shortcuts_menu(self.menuBar())
 
         # Conectar señales
@@ -73,8 +58,6 @@ class MainWindow(QMainWindow):
 
         # Variable para la ventana independiente
         self.videoWindow = None
-
-        logger.debug("MainWindow inicializado correctamente.")
 
     def create_menu_bar(self, exclude_shortcuts=False):
         menuBar = self.menuBar()
@@ -99,8 +82,7 @@ class MainWindow(QMainWindow):
         for name, slot, shortcut in actions:
             action = self.create_action(name, slot, shortcut)
             fileMenu.addAction(action)
-            self.actions[name] = action  # Añadir al diccionario de acciones
-            logger.debug(f"Acción añadida al menú Archivo: '{name}' con shortcut '{shortcut}'.")
+            self.actions[name] = action
 
     def create_edit_menu(self, menuBar):
         editMenu = menuBar.addMenu("&Editar")
@@ -118,16 +100,14 @@ class MainWindow(QMainWindow):
         for name, slot, shortcut in actions:
             action = self.create_action(name, slot, shortcut)
             editMenu.addAction(action)
-            self.actions[name] = action  # Añadir al diccionario de acciones
-            logger.debug(f"Acción añadida al menú Editar: '{name}' con shortcut '{shortcut}'.")
+            self.actions[name] = action
 
     def create_config_menu(self, menuBar):
         configMenu = menuBar.addMenu("&Configuración")
 
         openConfigAction = self.create_action("&Configuración", self.open_config_dialog)
         configMenu.addAction(openConfigAction)
-        self.actions["&Configuración"] = openConfigAction  # Añadir al diccionario de acciones
-        logger.debug("Acción añadida al menú Configuración: '&Configuración'.")
+        self.actions["&Configuración"] = openConfigAction
 
     def create_shortcuts_menu(self, menuBar):
         shortcutsMenu = menuBar.addMenu("&Shortcuts")
@@ -135,33 +115,28 @@ class MainWindow(QMainWindow):
         # Submenú para configurar shortcuts
         configure_shortcuts_action = self.create_action("&Configurar Shortcuts", self.open_shortcut_config_dialog)
         shortcutsMenu.addAction(configure_shortcuts_action)
-        self.actions["&Configurar Shortcuts"] = configure_shortcuts_action  # Añadir al diccionario de acciones
-        logger.debug("Acción añadida al menú Shortcuts: '&Configurar Shortcuts'.")
+        self.actions["&Configurar Shortcuts"] = configure_shortcuts_action
 
         # Submenú para cargar configuraciones existentes
         load_config_menu = shortcutsMenu.addMenu("Cargar Configuración")
         for config_name in self.shortcut_manager.get_available_configs():
-            # Usar una función lambda con argumentos por defecto para evitar problemas de cierre
             action = self.create_action(
                 config_name,
                 lambda checked, name=config_name: self.shortcut_manager.apply_shortcuts(name)
             )
             load_config_menu.addAction(action)
-            self.actions[config_name] = action  # Añadir al diccionario de acciones
-            logger.debug(f"Acción añadida al submenú Cargar Configuración: '{config_name}'.")
+            self.actions[config_name] = action
 
         # Opción para eliminar configuraciones
         delete_config_action = self.create_action("Eliminar Configuración", self.delete_configuration)
         shortcutsMenu.addAction(delete_config_action)
-        self.actions["Eliminar Configuración"] = delete_config_action  # Añadir al diccionario de acciones
-        logger.debug("Acción añadida al menú Shortcuts: 'Eliminar Configuración'.")
+        self.actions["Eliminar Configuración"] = delete_config_action
 
     def create_action(self, name, slot, shortcut=None):
         action = QAction(name, self)
         if shortcut:
             action.setShortcut(QKeySequence(shortcut))
         action.triggered.connect(slot)
-        logger.debug(f"Acción creada: '{name}' con shortcut '{shortcut}'.")
         return action
 
     def open_config_dialog(self):
@@ -171,22 +146,15 @@ class MainWindow(QMainWindow):
         )
         if config_dialog.exec_() == QDialog.Accepted:
             self.trim_value, self.font_size = config_dialog.get_values()
-            logger.debug(
-                f"Configuración actualizada: Trim={self.trim_value} ms, "
-                f"Tamaño de Fuente={self.font_size} pt"
-            )
             self.apply_font_size()
 
     def apply_font_size(self):
-        """
-        Aplica el tamaño de fuente configurado a los elementos relevantes.
-        """
         # Ajustar el tamaño de la fuente en la tabla del guion
         font = self.tableWindow.tableWidget.font()
         font.setPointSize(self.font_size)
         self.tableWindow.tableWidget.setFont(font)
 
-        # Ajustar la fuente de los encabezados si es necesario
+        # Ajustar la fuente de los encabezados
         header = self.tableWindow.tableWidget.horizontalHeader()
         header_font = header.font()
         header_font.setPointSize(self.font_size)
@@ -201,13 +169,12 @@ class MainWindow(QMainWindow):
     def open_shortcut_config_dialog(self):
         dialog = ShortcutConfigDialog(self.shortcut_manager)
         dialog.exec_()
-        # Aplicar los shortcuts después de configurar
         self.shortcut_manager.apply_shortcuts(self.shortcut_manager.current_config)
 
     def delete_configuration(self):
         configs = self.shortcut_manager.get_available_configs()
         if "default" in configs:
-            configs.remove("default")  # No permitir eliminar 'default'
+            configs.remove("default")
         if not configs:
             QMessageBox.information(self, "Información", "No hay configuraciones para eliminar.")
             return
@@ -233,8 +200,7 @@ class MainWindow(QMainWindow):
                         "Éxito",
                         f"Configuración '{config}' eliminada exitosamente."
                     )
-                    self.create_shortcuts_menu(menuBar=self.menuBar())  # Actualizar el menú
-                    logger.debug(f"Configuración '{config}' eliminada y menú actualizado.")
+                    self.create_shortcuts_menu(menuBar=self.menuBar())
 
     def open_video(self):
         videoPath, _ = QFileDialog.getOpenFileName(
@@ -242,12 +208,9 @@ class MainWindow(QMainWindow):
         )
         if videoPath:
             self.videoPlayerWidget.load_video(videoPath)
-            logger.debug(f"Video cargado desde: {videoPath}")
 
     def detach_video(self, video_widget):
-        logger.debug("Intentando detachar el VideoPlayerWidget.")
         if self.videoWindow is not None:
-            logger.debug("VideoWindow ya está abierto.")
             return
 
         try:
@@ -257,12 +220,10 @@ class MainWindow(QMainWindow):
                 self.videoWindow = VideoWindow(detached_widget)
                 self.videoWindow.close_detached.connect(self.attach_video)
                 self.videoWindow.show()
-                logger.debug("VideoWindow creado y mostrado.")
 
                 # Ajustar el splitter para solo mostrar el TableWindow
                 self.splitter.setSizes([0, 100])
         except Exception as e:
-            logger.error(f"Error al detachar el video: {e}")
             QMessageBox.warning(
                 self,
                 "Error",
@@ -270,21 +231,17 @@ class MainWindow(QMainWindow):
             )
 
     def attach_video(self):
-        logger.debug("Intentando adjuntar el VideoPlayerWidget de nuevo.")
         if self.videoWindow is None:
-            logger.debug("VideoWindow no está abierto.")
             return
 
         try:
             video_widget = self.videoWindow.video_widget
             self.splitter.insertWidget(0, video_widget)
             self.videoWindow = None
-            logger.debug("VideoPlayerWidget insertado de nuevo en el splitter.")
 
             # Ajustar el splitter para mostrar ambos widgets de manera equilibrada
             self.splitter.setSizes([50, 50])
         except Exception as e:
-            logger.error(f"Error al adjuntar el video: {e}")
             QMessageBox.warning(
                 self,
                 "Error",
@@ -293,22 +250,9 @@ class MainWindow(QMainWindow):
 
     def handle_set_position(self, action, position_ms):
         try:
-            logger.debug(
-                f"handle_set_position called with action={action}, "
-                f"position_ms={position_ms}"
-            )
-            # Aplicar el trim al establecer la posición
             adjusted_position = max(position_ms - self.trim_value, 0)
-            logger.debug(
-                f"Adjusted position after trim: {adjusted_position} ms"
-            )
             self.videoPlayerWidget.set_position_public(adjusted_position)
-            logger.debug(
-                f"Posición del video establecida a {adjusted_position} ms "
-                f"(Trim aplicado: {self.trim_value} ms) por acción {action}"
-            )
         except Exception as e:
-            logger.error(f"Error al establecer la posición del video: {e}")
             QMessageBox.warning(
                 self,
                 "Error",
@@ -317,20 +261,16 @@ class MainWindow(QMainWindow):
 
 def handle_exception(exc_type, exc_value, exc_traceback):
     if issubclass(exc_type, KeyboardInterrupt):
-        # Permitir que Ctrl+C termine la aplicación
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
     error_message = ''.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
-    logger.error(f"Excepción no manejada: {error_message}")
     QMessageBox.critical(None, "Error Inesperado", "Ocurrió un error inesperado. Consulte los logs para más detalles.")
-
 
 def main():
     app = QApplication(sys.argv)
     mainWindow = MainWindow()
     mainWindow.show()
     sys.exit(app.exec_())
-
 
 if __name__ == "__main__":
     main()
