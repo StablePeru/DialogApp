@@ -14,7 +14,8 @@
             "Mover &Abajo": "Alt+Down",
             "&Separar Intervención": "Alt+I",
             "&Juntar Intervenciones": "Alt+J",
-            "&Configuración": "Ctrl+K"
+            "&Configuración": "Ctrl+K",
+            "&Ajustar Diálogos": "Ctrl+J"
         },
         "prueba": {
             "&Abrir Video": "Ctrl+U",
