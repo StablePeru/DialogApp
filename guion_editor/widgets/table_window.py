@@ -368,8 +368,9 @@ class TableWindow(QWidget):
             path, _ = QFileDialog.getOpenFileName(self, "Abrir archivo Excel", "", "Archivos Excel (*.xlsx)")
             if path:
                 self.load_from_excel(path)
-                # Agregar a archivos recientes
-                self.main_window.add_to_recent_files(path)
+            else:
+                # El usuario canceló la carga
+                QMessageBox.information(self, "Carga cancelada", "La carga del archivo Excel ha sido cancelada.")
         except Exception as e:
             self.handle_exception(e, "Error al importar desde Excel")
 
@@ -455,9 +456,10 @@ class TableWindow(QWidget):
         except Exception as e:
             self.handle_exception(e, "Error al seleccionar la siguiente fila")
 
-    def load_from_excel(self):
+    def load_from_excel(self, path=None):
         try:
-            path, _ = QFileDialog.getOpenFileName(self, "Abrir archivo Excel", "", "Archivos Excel (*.xlsx)")
+            if not path:
+                path, _ = QFileDialog.getOpenFileName(self, "Abrir archivo Excel", "", "Archivos Excel (*.xlsx)")
             if path:
                 df = pd.read_excel(path)
                 required_columns = ['IN', 'OUT', 'PERSONAJE', 'DIÁLOGO']
@@ -468,7 +470,8 @@ class TableWindow(QWidget):
                 QMessageBox.information(self, "Éxito", "Datos importados correctamente desde Excel.")
                 self.unsaved_changes = False  # Datos cargados, no hay cambios sin guardar
                 # Agregar a archivos recientes
-                self.main_window.add_to_recent_files(path)
+                if self.main_window:
+                    self.main_window.add_to_recent_files(path)
             else:
                 # El usuario canceló la carga
                 QMessageBox.information(self, "Carga cancelada", "La carga del archivo Excel ha sido cancelada.")
@@ -766,16 +769,36 @@ class MoveRowCommand(QUndoCommand):
         # Mover visualmente en la tabla
         self.table_widget = self.table_window.table_widget
         self.table_widget.blockSignals(True)
-        row_items = [self.table_widget.item(from_row, col) for col in range(self.table_widget.columnCount())]
-        row_widgets = [self.table_widget.cellWidget(from_row, col) for col in range(self.table_widget.columnCount())]
+
+        # Extraer datos antes de eliminar la fila
+        row_data_items = {}
+        for col in range(self.table_widget.columnCount()):
+            if col == 3:
+                widget = self.table_widget.cellWidget(from_row, col)
+                if widget:
+                    text = widget.toPlainText()
+                    row_data_items[col] = text
+            else:
+                item = self.table_widget.item(from_row, col)
+                if item:
+                    text = item.text()
+                    row_data_items[col] = text
+
         self.table_widget.removeRow(from_row)
         self.table_widget.insertRow(to_row)
+
         for col in range(self.table_widget.columnCount()):
-            if row_items[col]:
-                self.table_widget.setItem(to_row, col, row_items[col])
-            if row_widgets[col]:
-                self.table_widget.setCellWidget(to_row, col, row_widgets[col])
+            if col == 3:
+                text = row_data_items.get(col, '')
+                text_edit = self.table_window.create_text_edit(text, to_row, col)
+                self.table_widget.setCellWidget(to_row, col, text_edit)
+            else:
+                text = row_data_items.get(col, '')
+                item = self.table_window.create_table_item(text)
+                self.table_widget.setItem(to_row, col, item)
+
         self.table_widget.blockSignals(False)
+        self.table_window.adjust_row_height(to_row)
 
 class SplitInterventionCommand(QUndoCommand):
     def __init__(self, table_window, row, before_text, after_text):
@@ -794,14 +817,14 @@ class SplitInterventionCommand(QUndoCommand):
 
     def undo(self):
         # Restaurar el texto original
-        command = TableWindow.EditCommand(self.table_window, self.row, 3, self.before_text, self.before_text + self.after_text)
+        command = EditCommand(self.table_window, self.row, 3, self.before_text, self.before_text + self.after_text)
         command.redo()
         self.table_window.table_widget.removeRow(self.row + 1)
         self.table_window.dataframe = self.table_window.dataframe.drop(self.row + 1).reset_index(drop=True)
 
     def redo(self):
         # Actualizar el texto de la fila original
-        command = TableWindow.EditCommand(self.table_window, self.row, 3, self.before_text + self.after_text, self.before_text)
+        command = EditCommand(self.table_window, self.row, 3, self.before_text + self.after_text, self.before_text)
         command.redo()
 
         # Insertar nueva fila
@@ -836,7 +859,7 @@ class MergeInterventionsCommand(QUndoCommand):
 
     def undo(self):
         # Restaurar diálogo original
-        command = TableWindow.EditCommand(self.table_window, self.row, 3, self.merged_dialog, self.original_dialog)
+        command = EditCommand(self.table_window, self.row, 3, self.merged_dialog, self.original_dialog)
         command.redo()
         # Restaurar fila eliminada
         self.table_window.table_widget.insertRow(self.row + 1)
@@ -859,7 +882,7 @@ class MergeInterventionsCommand(QUndoCommand):
 
     def redo(self):
         # Actualizar diálogo
-        command = TableWindow.EditCommand(self.table_window, self.row, 3, self.original_dialog, self.merged_dialog)
+        command = EditCommand(self.table_window, self.row, 3, self.original_dialog, self.merged_dialog)
         command.redo()
         # Eliminar siguiente fila
         self.table_window.table_widget.removeRow(self.row + 1)
