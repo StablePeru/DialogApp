@@ -13,6 +13,8 @@ hidden_imports = collect_submodules('guion_editor') + [
     'guion_editor.widgets.video_window',
     'guion_editor.widgets.table_window',
     'guion_editor.widgets.config_dialog',
+    'guion_editor.widgets.cast_window',
+    'guion_editor.widgets.find_replace_dialog',
     'guion_editor.widgets.custom_table_widget',
     'guion_editor.widgets.shortcut_config_dialog',
     'guion_editor.delegates.custom_delegates',

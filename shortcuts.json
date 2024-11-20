@@ -15,7 +15,10 @@
             "&Separar Intervención": "Alt+I",
             "&Juntar Intervenciones": "Alt+J",
             "&Configuración": "Ctrl+K",
-            "&Ajustar Diálogos": "Ctrl+J"
+            "&Ajustar Diálogos": "Ctrl+J",
+            "Pausar/Reproducir": "Ctrl+Up",
+            "Retroceder": "Ctrl+Left",
+            "Avanzar": "Ctrl+Right"
         },
         "prueba": {
             "&Abrir Video": "Ctrl+U",
@@ -30,7 +33,10 @@
             "Mover &Abajo": "Alt+Down",
             "&Separar Intervención": "Alt+I",
             "&Juntar Intervenciones": "Alt+J",
-            "&Configuración": "Ctrl+K"
+            "&Configuración": "Ctrl+K",
+            "Pausar/Reproducir": "Ctrl+Up",
+            "Retroceder": "Ctrl+Left",
+            "Avanzar": "Ctrl+Right"
         }
     }
 }

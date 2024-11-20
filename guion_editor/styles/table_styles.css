@@ -1,0 +1,18 @@
+/* styles/table_styles.css */
+
+QTableWidget {
+    background-color: #F5F5DC; /* Color crema claro */
+}
+
+QTableWidget::item {
+    background-color: #FFFFFF;
+}
+
+QTableWidget::item:alternate {
+    background-color: #F0F0E0; /* Un tono ligeramente diferente para filas alternas */
+}
+
+QTableWidget::item:selected {
+    background-color: #A0A0A0; /* Color para ítems seleccionados */
+    color: #FFFFFF; /* Color de texto para ítems seleccionados */
+}

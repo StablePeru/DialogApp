@@ -49,7 +49,11 @@ class ShortcutManager:
                     "Mover &Abajo": "Alt+Down",
                     "&Separar Intervención": "Alt+I",
                     "&Juntar Intervenciones": "Alt+J",
-                    "&Configuración": "Ctrl+K"
+                    "&Configuración": "Ctrl+K",
+                    "Pausar/Reproducir": "Ctrl+Up",
+                    "Retroceder": "Ctrl+Left",
+                    "Avanzar": "Ctrl+Right",
+                    "Copiar IN/OUT a Siguiente": "Ctrl+B",
                 }
             }
             self.current_config = "default"

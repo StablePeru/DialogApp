@@ -2,6 +2,8 @@
 
 import sys
 import traceback
+import json
+import os
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QWidget, QSplitter, QAction,
@@ -36,12 +38,18 @@ class MainWindow(QMainWindow):
         self.splitter = QSplitter(Qt.Horizontal)
         self.videoPlayerWidget = VideoPlayerWidget()
         self.splitter.addWidget(self.videoPlayerWidget)
-        self.tableWindow = TableWindow(self.videoPlayerWidget)
+        self.tableWindow = TableWindow(self.videoPlayerWidget, main_window=self)
         self.splitter.addWidget(self.tableWindow)
         layout.addWidget(self.splitter)
 
         # Diccionario para almacenar las acciones
         self.actions = {}
+
+        # **Inicializar la lista de archivos recientes antes de crear el menú**
+        self.recent_files = self.load_recent_files()
+
+        # Crear las acciones de video
+        self.create_video_actions()
 
         # Crear la barra de menú sin el menú de shortcuts
         self.create_menu_bar(exclude_shortcuts=True)
@@ -71,7 +79,7 @@ class MainWindow(QMainWindow):
         fileMenu = menuBar.addMenu("&Archivo")
 
         actions = [
-            ("&Abrir Video", self.open_video, "Ctrl+O"),
+            ("&Abrir Video", self.open_video_file, "Ctrl+O"),
             ("&Abrir Guion", self.tableWindow.open_file_dialog, "Ctrl+G"),
             ("&Exportar Guion a Excel", self.tableWindow.export_to_excel, "Ctrl+E"),
             ("&Importar Guion desde Excel", self.tableWindow.import_from_excel, "Ctrl+I"),
@@ -83,6 +91,12 @@ class MainWindow(QMainWindow):
             action = self.create_action(name, slot, shortcut)
             fileMenu.addAction(action)
             self.actions[name] = action
+
+        # Crear el submenú de archivos recientes
+        self.recent_files_menu = fileMenu.addMenu("Abrir Recientemente")
+
+        # Actualizar el menú de archivos recientes
+        self.update_recent_files_menu()
 
     def create_edit_menu(self, menuBar):
         editMenu = menuBar.addMenu("&Editar")
@@ -96,6 +110,14 @@ class MainWindow(QMainWindow):
             ("&Separar Intervención", self.tableWindow.split_intervention, "Alt+I"),
             ("&Juntar Intervenciones", self.tableWindow.merge_interventions, "Alt+J"),
         ]
+
+        view_cast_action = self.create_action("Ver Reparto Completo", self.open_cast_window)
+        editMenu.addAction(view_cast_action)
+        self.actions["Ver Reparto Completo"] = view_cast_action
+
+        find_replace_action = self.create_action("Buscar y Reemplazar", self.open_find_replace_dialog)
+        editMenu.addAction(find_replace_action)
+        self.actions["Buscar y Reemplazar"] = find_replace_action
 
         for name, slot, shortcut in actions:
             action = self.create_action(name, slot, shortcut)
@@ -132,12 +154,61 @@ class MainWindow(QMainWindow):
         shortcutsMenu.addAction(delete_config_action)
         self.actions["Eliminar Configuración"] = delete_config_action
 
+    def update_recent_files_menu(self):
+        self.recent_files_menu.clear()
+        for file_path in self.recent_files:
+            action = QAction(os.path.basename(file_path), self)
+            action.setToolTip(file_path)
+            action.triggered.connect(lambda checked, path=file_path: self.open_recent_file(path))
+            self.recent_files_menu.addAction(action)
+
     def create_action(self, name, slot, shortcut=None):
         action = QAction(name, self)
         if shortcut:
             action.setShortcut(QKeySequence(shortcut))
         action.triggered.connect(slot)
         return action
+    
+    def create_video_actions(self):
+        # Acción para Pausar/Reproducir
+        play_pause_action = self.create_action("Pausar/Reproducir", self.videoPlayerWidget.toggle_play)
+        self.addAction(play_pause_action)
+        self.actions["Pausar/Reproducir"] = play_pause_action
+
+        # Acción para Retroceder
+        rewind_action = self.create_action("Retroceder", lambda: self.videoPlayerWidget.change_position(-5000))
+        self.addAction(rewind_action)
+        self.actions["Retroceder"] = rewind_action
+
+        # Acción para Avanzar
+        forward_action = self.create_action("Avanzar", lambda: self.videoPlayerWidget.change_position(5000))
+        self.addAction(forward_action)
+        self.actions["Avanzar"] = forward_action
+
+    def open_cast_window(self):
+        from guion_editor.widgets.cast_window import CastWindow
+        self.cast_window = CastWindow(self.tableWindow)
+        self.cast_window.show()
+
+    def open_find_replace_dialog(self):
+        from guion_editor.widgets.find_replace_dialog import FindReplaceDialog
+        dialog = FindReplaceDialog(self.tableWindow)
+        dialog.exec_()
+
+    def open_recent_file(self, file_path):
+        if os.path.exists(file_path):
+            # Determinar si es un video, guion o Excel basado en la extensión
+            if file_path.lower().endswith(('.mp4', '.avi', '.mkv')):
+                self.videoPlayerWidget.load_video(file_path)
+            elif file_path.lower().endswith('.xlsx'):
+                self.tableWindow.load_from_excel(file_path)
+            elif file_path.lower().endswith('.docx'):
+                self.tableWindow.load_data(file_path)
+            else:
+                QMessageBox.warning(self, "Error", "Tipo de archivo no soportado.")
+        else:
+            QMessageBox.warning(self, "Error", "El archivo no existe.")
+
 
     def open_config_dialog(self):
         config_dialog = ConfigDialog(
@@ -147,6 +218,33 @@ class MainWindow(QMainWindow):
         if config_dialog.exec_() == QDialog.Accepted:
             self.trim_value, self.font_size = config_dialog.get_values()
             self.apply_font_size()
+
+    def add_to_recent_files(self, file_path):
+        if file_path in self.recent_files:
+            self.recent_files.remove(file_path)
+        self.recent_files.insert(0, file_path)
+        self.recent_files = self.recent_files[:10]  # Mantener solo los últimos 10 archivos
+        self.save_recent_files()
+        self.update_recent_files_menu()
+
+    def load_recent_files(self):
+        try:
+            if os.path.exists('recent_files.json'):
+                with open('recent_files.json', 'r') as f:
+                    return json.load(f)
+            else:
+                return []
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Error al cargar archivos recientes: {str(e)}")
+            return []
+
+    def save_recent_files(self):
+        try:
+            with open('recent_files.json', 'w') as f:
+                json.dump(self.recent_files, f)
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Error al guardar archivos recientes: {str(e)}")
+
 
     def apply_font_size(self):
         # Ajustar el tamaño de la fuente en la tabla del guion
@@ -202,12 +300,11 @@ class MainWindow(QMainWindow):
                     )
                     self.create_shortcuts_menu(menuBar=self.menuBar())
 
-    def open_video(self):
-        videoPath, _ = QFileDialog.getOpenFileName(
-            self, "Abrir Video", "", "Video Files (*.mp4 *.avi *.mkv)"
-        )
-        if videoPath:
-            self.videoPlayerWidget.load_video(videoPath)
+    def open_video_file(self):
+        file_name, _ = QFileDialog.getOpenFileName(self, "Abrir Video", "", "Videos (*.mp4 *.avi *.mkv)")
+        if file_name:
+            self.videoPlayerWidget.load_video(file_name)
+            self.add_to_recent_files(file_name)
 
     def detach_video(self, video_widget):
         if self.videoWindow is not None:
@@ -258,6 +355,35 @@ class MainWindow(QMainWindow):
                 "Error",
                 f"Error al establecer la posición del video: {str(e)}"
             )
+
+    def closeEvent(self, event):
+        # Verificar si hay cambios sin guardar en TableWindow
+        if self.tableWindow.unsaved_changes:
+            reply = QMessageBox.question(
+                self,
+                "Guardar cambios",
+                "Hay cambios sin guardar. ¿Desea exportar el guion antes de salir?",
+                QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+                QMessageBox.Save
+            )
+
+            if reply == QMessageBox.Save:
+                # Intentar exportar el guion
+                try:
+                    self.tableWindow.export_to_excel()
+                    if not self.tableWindow.unsaved_changes:
+                        event.accept()
+                    else:
+                        event.ignore()
+                except Exception as e:
+                    QMessageBox.warning(self, "Error", f"No se pudo guardar el guion: {str(e)}")
+                    event.ignore()
+            elif reply == QMessageBox.Discard:
+                event.accept()
+            else:
+                event.ignore()
+        else:
+            event.accept()
 
 def handle_exception(exc_type, exc_value, exc_traceback):
     if issubclass(exc_type, KeyboardInterrupt):
