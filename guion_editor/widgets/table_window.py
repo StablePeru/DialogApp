@@ -18,7 +18,7 @@ from guion_editor.widgets.custom_table_widget import CustomTableWidget
 
 class TableWindow(QWidget):
     in_out_signal = pyqtSignal(str, int)
-    
+    character_name_changed = pyqtSignal()
 
     class KeyPressFilter(QObject):
         def __init__(self, table_window):
@@ -608,6 +608,8 @@ class TableWindow(QWidget):
                 item.setText(new_name)
         self.unsaved_changes = True
         self.update_character_completer()
+        # Emitir señal de cambio de nombre
+        self.character_name_changed.emit()
 
     def find_and_replace(self, find_text, replace_text):
         try:
