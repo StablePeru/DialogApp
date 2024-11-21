@@ -33,7 +33,7 @@ def leer_guion(docx_file):
         personaje_actual = None
 
         # Lista de encabezados comunes que queremos filtrar
-        encabezados_excluir = ["IZENBURUA", "ATOLA", "KARTELA", "NUMB CHUCKS 1A"]
+        encabezados_excluir = ["NUMB CHUCKS 1A"]
 
         for para in doc.paragraphs:
             texto = para.text.strip()

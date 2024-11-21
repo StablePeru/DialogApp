@@ -661,8 +661,18 @@ class EditCommand(QUndoCommand):
         if self.column == 3:
             text_widget = self.table_window.table_widget.cellWidget(self.row, self.column)
             if text_widget:
+                # Guardar la posición actual del cursor
+                cursor = text_widget.textCursor()
+                position = cursor.position()
+
                 text_widget.blockSignals(True)
                 text_widget.setPlainText(value)
+                
+                # Restaurar la posición del cursor
+                new_cursor = text_widget.textCursor()
+                new_cursor.setPosition(min(position, len(value)))
+                text_widget.setTextCursor(new_cursor)
+
                 text_widget.blockSignals(False)
                 self.table_window.adjust_row_height(self.row)
         else:
@@ -672,6 +682,7 @@ class EditCommand(QUndoCommand):
         # Actualizar el completer si es necesario
         if self.column == 2:
             self.table_window.update_character_completer()
+
 
 class AddRowCommand(QUndoCommand):
     def __init__(self, table_window, row):
