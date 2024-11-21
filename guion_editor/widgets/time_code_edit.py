@@ -17,19 +17,28 @@ class TimeCodeEdit(QLineEdit):
         if len(self.digits) != 8:
             self.digits = [0]*8
             self.update_display()
-        self.setReadOnly(True)
+        self.setReadOnly(False)  # Permitir edición
+        self.insert_pos = 7  # Posición inicial para insertar desde la derecha
 
     def keyPressEvent(self, event):
-        if event.key() in (Qt.Key_Backspace, Qt.Key_Delete, Qt.Key_Left, Qt.Key_Right, Qt.Key_Home, Qt.Key_End):
+        key = event.key()
+        if key in (Qt.Key_Backspace, Qt.Key_Delete, Qt.Key_Left, Qt.Key_Right, Qt.Key_Home, Qt.Key_End):
+            # Ignorar acciones de navegación y edición estándar
             event.ignore()
             return
         elif event.text().isdigit():
             new_digit = int(event.text())
-            self.digits.pop(0)
-            self.digits.append(new_digit)
-            self.update_display()
-            self.textChanged.emit(self.text())
+            # Reemplazar el dígito en la posición actual de inserción
+            if 0 <= self.insert_pos < 8:
+                self.digits[self.insert_pos] = new_digit
+                self.update_display()
+                self.textChanged.emit(self.text())
+                # Mover la posición de inserción hacia la izquierda
+                if self.insert_pos > 0:
+                    self.insert_pos -= 1
+            # Si insert_pos es menor que 0, no hacer nada
         else:
+            # Ignorar cualquier otro carácter
             event.ignore()
 
     def update_display(self):
@@ -39,7 +48,9 @@ class TimeCodeEdit(QLineEdit):
             self.digits[4]*10 + self.digits[5],
             self.digits[6]*10 + self.digits[7]
         )
+        self.blockSignals(True)  # Evitar emitir señales mientras se actualiza el texto
         self.setText(formatted)
+        self.blockSignals(False)
 
     def set_time_code(self, time_code):
         try:
@@ -53,8 +64,14 @@ class TimeCodeEdit(QLineEdit):
                 int(parts[3][0]), int(parts[3][1]),
             ]
             self.update_display()
+            self.insert_pos = 7  # Reiniciar la posición de inserción
         except:
             QMessageBox.warning(self, "Error", "Formato de Time Code inválido.")
 
     def get_time_code(self):
         return self.text()
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        # Reiniciar la posición de inserción al hacer clic (independientemente de la posición)
+        self.insert_pos = 7

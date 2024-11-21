@@ -25,7 +25,7 @@ class VideoPlayerWidget(QWidget):
         self.load_stylesheet()
         self.setup_shortcuts()
         self.setup_timers()
-        self.f11_pressed = False
+        self.f6_pressed = False
         self.out_timer = QTimer(self)
         self.out_timer.setInterval(40)
         self.out_timer.timeout.connect(self.mark_out)
@@ -146,7 +146,7 @@ class VideoPlayerWidget(QWidget):
             "F8": self.toggle_play,
             "F7": lambda: self.change_position(-5000),
             "F9": lambda: self.change_position(5000),
-            "F10": self.mark_in,
+            "F5": self.mark_in,
         }
         for key, slot in shortcuts.items():
             QShortcut(QKeySequence(key), self, slot)

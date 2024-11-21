@@ -27,11 +27,11 @@ class TableWindow(QWidget):
 
         def eventFilter(self, obj, event):
             if event.type() == QEvent.KeyPress:
-                if event.key() == Qt.Key_F11 and not event.isAutoRepeat():
+                if event.key() == Qt.Key_F6 and not event.isAutoRepeat():
                     self.table_window.video_player_widget.start_out_timer()
                     return True
             elif event.type() == QEvent.KeyRelease:
-                if event.key() == Qt.Key_F11 and not event.isAutoRepeat():
+                if event.key() == Qt.Key_F6 and not event.isAutoRepeat():
                     self.table_window.video_player_widget.stop_out_timer()
                     return True
             return False
