@@ -3,7 +3,7 @@
 
 import json
 import os
-from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtWidgets import QMessageBox, QShortcut
 from PyQt5.QtGui import QKeySequence
 import logging
 
@@ -17,6 +17,7 @@ class ShortcutManager:
         self.main_window = main_window
         self.configurations = {}
         self.current_config = 'default'
+        self.shortcuts = {}  # Inicializar el diccionario para almacenar los atajos
         logger.debug("Inicializando ShortcutManager.")
         self.load_shortcuts()
 
@@ -54,11 +55,13 @@ class ShortcutManager:
                     "Retroceder": "Ctrl+Left",
                     "Avanzar": "Ctrl+Right",
                     "Copiar IN/OUT a Siguiente": "Ctrl+B",
+                    "change_scene": "Ctrl+R"
                 }
             }
             self.current_config = "default"
             self.save_shortcuts()
             logger.debug(f"Configuración predeterminada guardada en {CONFIG_FILE}.")
+
         self.apply_shortcuts(self.current_config)
 
     def save_shortcuts(self):
@@ -90,6 +93,12 @@ class ShortcutManager:
                     logger.debug(f"Shortcut '{shortcut}' asignado a la acción '{action_name}'.")
                 except Exception as e:
                     logger.error(f"Error al asignar shortcut '{shortcut}' a la acción '{action_name}': {e}")
+            elif action_name == "change_scene":
+                # Crear un QShortcut para "change_scene" y conectarlo
+                shortcut_obj = QShortcut(QKeySequence(shortcut), self.main_window)
+                shortcut_obj.activated.connect(self.main_window.change_scene)
+                self.shortcuts[action_name] = shortcut_obj
+                logger.debug(f"Shortcut '{shortcut}' asignado a la acción '{action_name}'.")
             else:
                 logger.warning(f"Acción '{action_name}' no existe.")
 

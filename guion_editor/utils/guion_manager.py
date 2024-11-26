@@ -13,6 +13,9 @@ class GuionManager:
         df = pd.read_excel(path)
         if not self.validate_columns(df):
             raise ValueError("Faltan columnas requeridas en los datos.")
+        # Añadir la columna "Escena" si no existe
+        if "Escena" not in df.columns:
+            df.insert(0, "Escena", 1)
         self.dataframe = df
         return self.dataframe
 
@@ -25,6 +28,8 @@ class GuionManager:
         df = pd.DataFrame(data)
         if not self.validate_columns(df):
             raise ValueError("Faltan columnas requeridas en los datos.")
+        if "Escena" not in df.columns:
+            df.insert(0, "Escena", 1)
         self.dataframe = df
         return self.dataframe
 
@@ -41,5 +46,7 @@ class GuionManager:
         df = pd.DataFrame(guion_data)
         if not self.validate_columns(df):
             raise ValueError("Faltan columnas requeridas en los datos.")
+        if "Escena" not in df.columns:
+            df.insert(0, "Escena", 1)
         self.dataframe = df
         return self.dataframe

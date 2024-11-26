@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import (
     QFileDialog, QMessageBox, QDialog, QInputDialog
 )
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QKeySequence
+from PyQt5.QtGui import QKeySequence, QColor
 
 from guion_editor.widgets.video_player_widget import VideoPlayerWidget
 from guion_editor.widgets.table_window import TableWindow
@@ -66,6 +66,11 @@ class MainWindow(QMainWindow):
 
         # Variable para la ventana independiente
         self.videoWindow = None
+
+        if "change_scene" not in self.actions:
+            # Crear una acción invisible solo para manejar el atajo
+            self.actions["change_scene"] = QAction(self)
+            self.addAction(self.actions["change_scene"])
 
     def create_menu_bar(self, exclude_shortcuts=False):
         menuBar = self.menuBar()
@@ -355,6 +360,37 @@ class MainWindow(QMainWindow):
                 "Error",
                 f"Error al establecer la posición del video: {str(e)}"
             )
+
+    def change_scene(self):
+        selected_items = self.tableWindow.table_widget.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(self, "Cambio de Escena", "Por favor, selecciona una intervención para marcar el cambio de escena.")
+            return  # No hay selección
+
+        # Asumir que solo una fila está seleccionada
+        selected_row = selected_items[0].row()
+
+        # Obtener el número de escena actual (debería ser 1 por defecto)
+        scene_item = self.tableWindow.table_widget.item(selected_row, 0)
+        if scene_item:
+            current_scene = int(scene_item.text())
+
+            # Opcional: resaltar la fila para indicar el cambio de escena
+            for col in range(self.tableWindow.table_widget.columnCount()):
+                item = self.tableWindow.table_widget.item(selected_row, col)
+                if item:
+                    item.setBackground(QColor("#FFD700"))  # Amarillo dorado
+
+            # Incrementar los números de escena a partir de la siguiente fila
+            self.increment_scenes_from_row(selected_row + 1)
+
+    def increment_scenes_from_row(self, start_row):
+        total_rows = self.tableWindow.table_widget.rowCount()
+        for row in range(start_row, total_rows):
+            scene_item = self.tableWindow.table_widget.item(row, 0)
+            if scene_item:
+                current_scene = int(scene_item.text())
+                scene_item.setText(str(current_scene + 1))
 
     def closeEvent(self, event):
         # Verificar si hay cambios sin guardar en TableWindow

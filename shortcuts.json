@@ -18,7 +18,8 @@
             "&Ajustar Diálogos": "Ctrl+J",
             "Pausar/Reproducir": "Ctrl+Up",
             "Retroceder": "Ctrl+Left",
-            "Avanzar": "Ctrl+Right"
+            "Avanzar": "Ctrl+Right",
+            "change_scene": "Ctrl+R"
         },
         "prueba": {
             "&Abrir Video": "Ctrl+U",

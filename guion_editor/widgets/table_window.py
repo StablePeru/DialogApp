@@ -20,6 +20,22 @@ class TableWindow(QWidget):
     in_out_signal = pyqtSignal(str, int)
     character_name_changed = pyqtSignal()
 
+    # Definir constantes para los índices de las columnas
+    COL_SCENE = 0
+    COL_IN = 1
+    COL_OUT = 2
+    COL_CHARACTER = 3
+    COL_DIALOGUE = 4
+
+    # Mapeo de columnas de la tabla a columnas del DataFrame
+    TABLE_TO_DF_COL_MAP = {
+        COL_SCENE: 'SCENE',
+        COL_IN: 'IN',
+        COL_OUT: 'OUT',
+        COL_CHARACTER: 'PERSONAJE',
+        COL_DIALOGUE: 'DIÁLOGO'
+    }
+
     class KeyPressFilter(QObject):
         def __init__(self, table_window):
             super().__init__()
@@ -48,9 +64,10 @@ class TableWindow(QWidget):
         self.installEventFilter(self.key_filter)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setFocus()
-        self.dataframe = pd.DataFrame()
+        self.dataframe = pd.DataFrame(columns=self.TABLE_TO_DF_COL_MAP.values())  # Inicializar con columnas
         self.unsaved_changes = False  # Bandera para cambios sin guardar
         self.undo_stack = QUndoStack(self)  # Pila para deshacer/rehacer
+        self.has_scene_numbers = False  # Bandera para verificar si hay números de escena en los datos importados
         self.setup_ui()
 
         # Atajos para deshacer y rehacer
@@ -90,15 +107,24 @@ class TableWindow(QWidget):
     def setup_table_widget(self, layout):
         self.table_widget = CustomTableWidget()
         self.table_widget.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table_widget.setSelectionMode(QAbstractItemView.ExtendedSelection)  # Permitir selección múltiple con Shift/Ctrl
-        self.table_widget.setEditTriggers(QAbstractItemView.DoubleClicked)
+        self.table_widget.setSelectionMode(QAbstractItemView.SingleSelection)  # Permitir selección única
+        self.table_widget.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.SelectedClicked)
         layout.addWidget(self.table_widget)
-        self.table_widget.setItemDelegateForColumn(0, TimeCodeDelegate(self.table_widget))
-        self.table_widget.setItemDelegateForColumn(1, TimeCodeDelegate(self.table_widget))
 
-        # Pasar el método get_character_names al delegado
-        self.table_widget.setItemDelegateForColumn(2, CharacterDelegate(get_names_callback=self.get_character_names, parent=self.table_widget))
+        # Definir las columnas: "SCENE", "IN", "OUT", "PERSONAJE", "DIÁLOGO"
+        self.columns = ["SCENE", "IN", "OUT", "PERSONAJE", "DIÁLOGO"]
+        self.table_widget.setColumnCount(len(self.columns))
+        self.table_widget.setHorizontalHeaderLabels(self.columns)
 
+        # Configurar los delegados para las columnas existentes
+        self.table_widget.setItemDelegateForColumn(self.COL_IN, TimeCodeDelegate(self.table_widget))
+        self.table_widget.setItemDelegateForColumn(self.COL_OUT, TimeCodeDelegate(self.table_widget))
+        self.table_widget.setItemDelegateForColumn(self.COL_CHARACTER, CharacterDelegate(get_names_callback=self.get_character_names, parent=self.table_widget))
+        # "DIÁLOGO" debería usar un delegado diferente, como QPlainTextEdit, pero aquí se usa QTextEdit directamente
+
+        # Configurar la selección de filas completas
+        self.table_widget.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table_widget.setSelectionMode(QAbstractItemView.SingleSelection)
 
         self.table_widget.cellCtrlClicked.connect(self.handle_ctrl_click)
         self.table_widget.cellAltClicked.connect(self.handle_alt_click)
@@ -120,13 +146,32 @@ class TableWindow(QWidget):
         if file_name:
             self.load_data(file_name)
             # Agregar a archivos recientes
-            self.main_window.add_to_recent_files(file_name)
+            if self.main_window:
+                self.main_window.add_to_recent_files(file_name)
 
     def load_data(self, file_name):
         try:
             guion_data = leer_guion(file_name)
+            # Verificar si 'SCENE' está presente en los datos importados
+            if 'SCENE' not in guion_data[0]:
+                self.has_scene_numbers = False
+                for entry in guion_data:
+                    entry['SCENE'] = '1'  # Asignar '1' a todas las escenas si no están presentes
+                print("Importación sin números de escena. Asignando '1' a todas las escenas.")
+            else:
+                # Verificar si 'SCENE' tiene múltiples valores
+                scene_values = [entry['SCENE'] for entry in guion_data]
+                unique_scenes = set(scene_values)
+                if len(unique_scenes) > 1 or (len(unique_scenes) == 1 and unique_scenes.pop() != '1'):
+                    self.has_scene_numbers = True
+                    print("Importación con números de escena. Preservando escenas existentes.")
+                else:
+                    self.has_scene_numbers = False
+                    for entry in guion_data:
+                        entry['SCENE'] = '1'  # Asignar '1' a todas las escenas si todos son '1'
+                    print("Importación sin números de escena (todos '1'). Asignando '1' a todas las escenas.")
             self.dataframe = pd.DataFrame(guion_data)
-            required_columns = ['IN', 'OUT', 'PERSONAJE', 'DIÁLOGO']
+            required_columns = list(self.TABLE_TO_DF_COL_MAP.values())
             if not all(col in self.dataframe.columns for col in required_columns):
                 raise ValueError("Faltan columnas requeridas en los datos.")
             self.populate_table()
@@ -143,22 +188,25 @@ class TableWindow(QWidget):
             self.table_widget.blockSignals(True)  # Bloquear señales para evitar disparar itemChanged
             self.table_widget.clear()
             self.table_widget.setRowCount(self.dataframe.shape[0])
-            self.table_widget.setColumnCount(self.dataframe.shape[1])
-            self.table_widget.setHorizontalHeaderLabels(self.dataframe.columns.tolist())
+            self.table_widget.setColumnCount(len(self.columns))
+            self.table_widget.setHorizontalHeaderLabels(self.columns)
 
             for i in range(self.dataframe.shape[0]):
-                for j in range(self.dataframe.shape[1]):
-                    if j == 3:
-                        dialog_text = str(self.dataframe.iloc[i, j])
-                        text_edit = self.create_text_edit(dialog_text, i, j)
-                        self.table_widget.setCellWidget(i, j, text_edit)
+                # Asignar los valores de cada columna
+                for col_index, col_name in enumerate(self.columns):
+                    if col_name == "DIÁLOGO":
+                        dialogo_text = str(self.dataframe.at[i, col_name])
+                        dialogo_item = self.create_text_edit(dialogo_text, i, self.COL_DIALOGUE)
+                        self.table_widget.setCellWidget(i, self.COL_DIALOGUE, dialogo_item)
                     else:
-                        item = self.create_table_item(str(self.dataframe.iloc[i, j]))
-                        self.table_widget.setItem(i, j, item)
+                        text = str(self.dataframe.at[i, col_name])
+                        item = self.create_table_item(text, col_index)
+                        self.table_widget.setItem(i, col_index, item)
+
+                self.adjust_row_height(i)
 
             self.table_widget.resizeColumnsToContents()
             self.table_widget.horizontalHeader().setStretchLastSection(True)
-            self.adjust_all_row_heights()
             self.table_widget.blockSignals(False)  # Desbloquear señales
         except Exception as e:
             self.handle_exception(e, "Error al llenar la tabla")
@@ -170,7 +218,7 @@ class TableWindow(QWidget):
         text_edit.textChanged.connect(self.generate_text_changed_callback(row, column))
         return text_edit
 
-    def create_table_item(self, text):
+    def create_table_item(self, text, column):
         item = QTableWidgetItem(text)
         item.setFont(QFont("Arial", 12))
         return item
@@ -183,7 +231,7 @@ class TableWindow(QWidget):
     def adjust_dialogs(self):
         try:
             for i in range(self.dataframe.shape[0]):
-                text_widget = self.table_widget.cellWidget(i, 3)
+                text_widget = self.table_widget.cellWidget(i, self.COL_DIALOGUE)
                 if text_widget:
                     dialogo_actual = text_widget.toPlainText()
                     dialogo_ajustado = ajustar_dialogo(dialogo_actual)
@@ -192,7 +240,7 @@ class TableWindow(QWidget):
                     text_widget.blockSignals(False)
                     old_text = self.dataframe.at[i, 'DIÁLOGO']
                     if dialogo_actual != dialogo_ajustado:
-                        command = EditCommand(self, i, 3, old_text, dialogo_ajustado)
+                        command = EditCommand(self, i, self.COL_DIALOGUE, old_text, dialogo_ajustado)
                         self.undo_stack.push(command)
                         self.unsaved_changes = True
                     self.adjust_row_height(i)
@@ -206,7 +254,7 @@ class TableWindow(QWidget):
 
     def adjust_row_height(self, row):
         try:
-            text_widget = self.table_widget.cellWidget(row, 3)
+            text_widget = self.table_widget.cellWidget(row, self.COL_DIALOGUE)
             if text_widget:
                 document = text_widget.document()
                 text_height = document.size().height()
@@ -218,9 +266,13 @@ class TableWindow(QWidget):
 
     def on_text_changed(self, row, column):
         try:
+            df_col = self.get_dataframe_column_name(column)
+            if not df_col:
+                return
+
             text_widget = self.table_widget.cellWidget(row, column)
             new_text = text_widget.toPlainText()
-            old_text = self.dataframe.at[row, self.dataframe.columns[column]]
+            old_text = self.dataframe.at[row, df_col]
             if new_text != old_text:
                 command = EditCommand(self, row, column, old_text, new_text)
                 self.undo_stack.push(command)
@@ -232,15 +284,19 @@ class TableWindow(QWidget):
         try:
             row = item.row()
             column = item.column()
+            df_col = self.get_dataframe_column_name(column)
+            if not df_col:
+                return
+
             new_text = item.text()
-            old_text = self.dataframe.at[row, self.dataframe.columns[column]]
+            old_text = self.dataframe.at[row, df_col]
             if new_text != old_text:
                 command = EditCommand(self, row, column, old_text, new_text)
                 self.undo_stack.push(command)
                 self.unsaved_changes = True
-                if column == 2:
-                    # Actualizar el completer
-                    self.update_character_completer()
+                if column == self.COL_SCENE:
+                    self.has_scene_numbers = True  # Actualizar bandera
+                    print("El usuario ha editado los números de escena. has_scene_numbers = True")
         except Exception as e:
             self.handle_exception(e, "Error al actualizar celda en la tabla")
 
@@ -354,8 +410,10 @@ class TableWindow(QWidget):
 
     def save_to_excel(self, path):
         try:
+            # No llamar a renumerar_escenas aquí
+            # Actualizar el DataFrame con los diálogos actuales
             for row in range(self.table_widget.rowCount()):
-                dialog_widget = self.table_widget.cellWidget(row, 3)
+                dialog_widget = self.table_widget.cellWidget(row, self.COL_DIALOGUE)
                 if dialog_widget:
                     self.dataframe.at[row, 'DIÁLOGO'] = dialog_widget.toPlainText()
             self.dataframe.to_excel(path, index=False)
@@ -381,7 +439,7 @@ class TableWindow(QWidget):
                 QMessageBox.warning(self, "Separar Intervención", "Por favor, selecciona una fila para separar.")
                 return
 
-            dialog_widget = self.table_widget.cellWidget(selected_row, 3)
+            dialog_widget = self.table_widget.cellWidget(selected_row, self.COL_DIALOGUE)
             if not dialog_widget:
                 QMessageBox.warning(self, "Separar Intervención", "No hay diálogo para separar.")
                 return
@@ -421,13 +479,13 @@ class TableWindow(QWidget):
             if action.upper() == "IN":
                 old_value = self.dataframe.at[selected_row, 'IN']
                 if time_code != old_value:
-                    command = EditCommand(self, selected_row, 0, old_value, time_code)
+                    command = EditCommand(self, selected_row, self.COL_IN, old_value, time_code)
                     self.undo_stack.push(command)
                     self.unsaved_changes = True
             elif action.upper() == "OUT":
                 old_value = self.dataframe.at[selected_row, 'OUT']
                 if time_code != old_value:
-                    command = EditCommand(self, selected_row, 1, old_value, time_code)
+                    command = EditCommand(self, selected_row, self.COL_OUT, old_value, time_code)
                     self.undo_stack.push(command)
                     self.unsaved_changes = True
         except Exception as e:
@@ -446,13 +504,13 @@ class TableWindow(QWidget):
             if next_row < self.table_widget.rowCount():
                 self.table_widget.selectRow(next_row)
                 time_code = self.convert_milliseconds_to_time_code(current_out_ms)
-                old_value = self.dataframe.at[next_row, 'IN']
-                if time_code != old_value:
-                    command = EditCommand(self, next_row, 0, old_value, time_code)
+                old_in = self.dataframe.at[next_row, 'IN']
+                if time_code != old_in:
+                    command = EditCommand(self, next_row, self.COL_IN, old_in, time_code)
                     self.undo_stack.push(command)
                     self.unsaved_changes = True
                 self.adjust_row_height(next_row)
-                self.table_widget.scrollToItem(self.table_widget.item(next_row, 0), QAbstractItemView.PositionAtCenter)
+                self.table_widget.scrollToItem(self.table_widget.item(next_row, self.COL_SCENE), QAbstractItemView.PositionAtCenter)
         except Exception as e:
             self.handle_exception(e, "Error al seleccionar la siguiente fila")
 
@@ -462,9 +520,25 @@ class TableWindow(QWidget):
                 path, _ = QFileDialog.getOpenFileName(self, "Abrir archivo Excel", "", "Archivos Excel (*.xlsx)")
             if path:
                 df = pd.read_excel(path)
-                required_columns = ['IN', 'OUT', 'PERSONAJE', 'DIÁLOGO']
+                required_columns = list(self.TABLE_TO_DF_COL_MAP.values())
                 if not all(col in df.columns for col in required_columns):
                     raise ValueError("Faltan columnas requeridas en los datos.")
+                # Verificar si 'SCENE' está presente
+                if 'SCENE' not in df.columns:
+                    self.has_scene_numbers = False
+                    df['SCENE'] = '1'  # Asignar '1' a todas las escenas si no están presentes
+                    print("Importación desde Excel sin números de escena. Asignando '1' a todas las escenas.")
+                else:
+                    # Verificar si 'SCENE' tiene múltiples valores
+                    scene_values = df['SCENE'].astype(str).tolist()
+                    unique_scenes = set(scene_values)
+                    if len(unique_scenes) > 1 or (len(unique_scenes) == 1 and unique_scenes.pop() != '1'):
+                        self.has_scene_numbers = True
+                        print("Importación desde Excel con números de escena. Preservando escenas existentes.")
+                    else:
+                        self.has_scene_numbers = False
+                        df['SCENE'] = '1'  # Asignar '1' a todas las escenas si todos son '1'
+                        print("Importación desde Excel sin números de escena (todos '1'). Asignando '1' a todas las escenas.")
                 self.dataframe = df
                 self.populate_table()
                 QMessageBox.information(self, "Éxito", "Datos importados correctamente desde Excel.")
@@ -496,8 +570,8 @@ class TableWindow(QWidget):
                 QMessageBox.warning(self, "Juntar Intervenciones", "Las filas seleccionadas no tienen el mismo personaje.")
                 return
 
-            dialog_current_widget = self.table_widget.cellWidget(selected_row, 3)
-            dialog_next_widget = self.table_widget.cellWidget(selected_row + 1, 3)
+            dialog_current_widget = self.table_widget.cellWidget(selected_row, self.COL_DIALOGUE)
+            dialog_next_widget = self.table_widget.cellWidget(selected_row + 1, self.COL_DIALOGUE)
             if not dialog_current_widget or not dialog_next_widget:
                 QMessageBox.warning(self, "Juntar Intervenciones", "No hay diálogos para juntar.")
                 return
@@ -524,9 +598,7 @@ class TableWindow(QWidget):
         try:
             path, _ = QFileDialog.getSaveFileName(self, "Guardar archivo JSON", "", "Archivos JSON (*.json)")
             if path:
-                data = self.dataframe.to_dict(orient='records')
-                with open(path, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, ensure_ascii=False, indent=4)
+                self.save_to_json_file(path)
                 QMessageBox.information(self, "Éxito", "Datos guardados correctamente en JSON.")
                 self.unsaved_changes = False  # Cambios guardados
             else:
@@ -535,6 +607,21 @@ class TableWindow(QWidget):
         except Exception as e:
             self.handle_exception(e, "Error al guardar en JSON")
 
+    def save_to_json_file(self, path):
+        try:
+            # No llamar a renumerar_escenas aquí
+            # Actualizar el DataFrame con los diálogos actuales
+            for row in range(self.table_widget.rowCount()):
+                dialog_widget = self.table_widget.cellWidget(row, self.COL_DIALOGUE)
+                if dialog_widget:
+                    self.dataframe.at[row, 'DIÁLOGO'] = dialog_widget.toPlainText()
+            data = self.dataframe.to_dict(orient='records')
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            self.handle_exception(e, "Error al guardar en JSON")
+            raise e
+
     def load_from_json(self):
         try:
             path, _ = QFileDialog.getOpenFileName(self, "Abrir archivo JSON", "", "Archivos JSON (*.json)")
@@ -542,9 +629,25 @@ class TableWindow(QWidget):
                 with open(path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 df = pd.DataFrame(data)
-                required_columns = ['IN', 'OUT', 'PERSONAJE', 'DIÁLOGO']
+                required_columns = list(self.TABLE_TO_DF_COL_MAP.values())
                 if not all(col in df.columns for col in required_columns):
                     raise ValueError("Faltan columnas requeridas en los datos.")
+                # Verificar si 'SCENE' está presente
+                if 'SCENE' not in df.columns:
+                    self.has_scene_numbers = False
+                    df['SCENE'] = '1'  # Asignar '1' a todas las escenas si no están presentes
+                    print("Importación desde JSON sin números de escena. Asignando '1' a todas las escenas.")
+                else:
+                    # Verificar si 'SCENE' tiene múltiples valores
+                    scene_values = df['SCENE'].astype(str).tolist()
+                    unique_scenes = set(scene_values)
+                    if len(unique_scenes) > 1 or (len(unique_scenes) == 1 and unique_scenes.pop() != '1'):
+                        self.has_scene_numbers = True
+                        print("Importación desde JSON con números de escena. Preservando escenas existentes.")
+                    else:
+                        self.has_scene_numbers = False
+                        df['SCENE'] = '1'  # Asignar '1' a todas las escenas si todos son '1'
+                        print("Importación desde JSON sin números de escena (todos '1'). Asignando '1' a todas las escenas.")
                 self.dataframe = df
                 self.populate_table()
                 QMessageBox.information(self, "Éxito", "Datos cargados correctamente desde JSON.")
@@ -576,14 +679,14 @@ class TableWindow(QWidget):
             # Copiar IN
             old_in = self.dataframe.at[next_row, 'IN']
             if in_time != old_in:
-                command_in = EditCommand(self, next_row, 0, old_in, in_time)
+                command_in = EditCommand(self, next_row, self.COL_IN, old_in, in_time)
                 self.undo_stack.push(command_in)
                 self.unsaved_changes = True
 
             # Copiar OUT
             old_out = self.dataframe.at[next_row, 'OUT']
             if out_time != old_out:
-                command_out = EditCommand(self, next_row, 1, old_out, out_time)
+                command_out = EditCommand(self, next_row, self.COL_OUT, old_out, out_time)
                 self.undo_stack.push(command_out)
                 self.unsaved_changes = True
 
@@ -596,14 +699,14 @@ class TableWindow(QWidget):
 
     def update_character_completer(self):
         # Actualizar el completer en el delegado
-        self.table_widget.setItemDelegateForColumn(2, CharacterDelegate(get_names_callback=self.get_character_names, parent=self.table_widget))
+        self.table_widget.setItemDelegateForColumn(self.COL_CHARACTER, CharacterDelegate(get_names_callback=self.get_character_names, parent=self.table_widget))
 
     def update_character_name(self, old_name, new_name):
         # Actualizar nombres en el dataframe
         self.dataframe.loc[self.dataframe['PERSONAJE'] == old_name, 'PERSONAJE'] = new_name
         # Actualizar la tabla visualmente
         for row in range(self.table_widget.rowCount()):
-            item = self.table_widget.item(row, 2)
+            item = self.table_widget.item(row, self.COL_CHARACTER)
             if item and item.text() == old_name:
                 item.setText(new_name)
         self.unsaved_changes = True
@@ -615,22 +718,22 @@ class TableWindow(QWidget):
         try:
             for row in range(self.table_widget.rowCount()):
                 # Reemplazar en diálogos
-                dialog_widget = self.table_widget.cellWidget(row, 3)
+                dialog_widget = self.table_widget.cellWidget(row, self.COL_DIALOGUE)
                 if dialog_widget:
                     text = dialog_widget.toPlainText()
                     if find_text in text:
                         new_text = text.replace(find_text, replace_text)
-                        command = EditCommand(self, row, 3, text, new_text)
+                        command = EditCommand(self, row, self.COL_DIALOGUE, text, new_text)
                         self.undo_stack.push(command)
                         self.unsaved_changes = True
 
                 # Reemplazar en personajes
-                character_item = self.table_widget.item(row, 2)
+                character_item = self.table_widget.item(row, self.COL_CHARACTER)
                 if character_item:
                     text = character_item.text()
                     if find_text in text:
                         new_text = text.replace(find_text, replace_text)
-                        command = EditCommand(self, row, 2, text, new_text)
+                        command = EditCommand(self, row, self.COL_CHARACTER, text, new_text)
                         self.undo_stack.push(command)
                         self.unsaved_changes = True
             QMessageBox.information(self, "Buscar y Reemplazar", "Reemplazo completado.")
@@ -639,6 +742,28 @@ class TableWindow(QWidget):
 
     def handle_exception(self, exception, message):
         QMessageBox.critical(self, "Error", f"{message}: {str(exception)}")
+
+    def get_dataframe_column_name(self, table_col_index):
+        """Mapea el índice de columna de la tabla al nombre de columna del DataFrame."""
+        return self.TABLE_TO_DF_COL_MAP.get(table_col_index, None)
+
+    def renumerar_escenas(self):
+        """Asigna '1' a todas las escenas si los datos importados no contienen números de escena."""
+        try:
+            if not self.has_scene_numbers:
+                print("Renumerando escenas: Asignando '1' a todas las escenas.")
+                for row in range(self.table_widget.rowCount()):
+                    self.dataframe.at[row, 'SCENE'] = '1'
+                    # Actualizar la vista de la tabla
+                    item = self.table_widget.item(row, self.COL_SCENE)
+                    if item:
+                        item.setText('1')
+                self.unsaved_changes = True
+            else:
+                print("No se renumeran escenas porque los datos importados tienen números de escena.")
+        except Exception as e:
+            self.handle_exception(e, "Error al renumerar escenas")
+
 
 # Clases de comandos para deshacer/rehacer
 class EditCommand(QUndoCommand):
@@ -649,6 +774,8 @@ class EditCommand(QUndoCommand):
         self.column = column
         self.old_value = old_value
         self.new_value = new_value
+        column_name = table_window.columns[column]
+        self.setText(f"Editar {column_name} en fila {row + 1}")
 
     def undo(self):
         self._apply_value(self.old_value)
@@ -657,8 +784,13 @@ class EditCommand(QUndoCommand):
         self._apply_value(self.new_value)
 
     def _apply_value(self, value):
-        self.table_window.dataframe.iat[self.row, self.column] = value
-        if self.column == 3:
+        df_col_name = self.table_window.get_dataframe_column_name(self.column)
+        if df_col_name is None:
+            # La columna no está en el DataFrame (por ejemplo, "SCENE")
+            return
+
+        self.table_window.dataframe.at[self.row, df_col_name] = value
+        if self.column == self.table_window.COL_DIALOGUE:
             text_widget = self.table_window.table_widget.cellWidget(self.row, self.column)
             if text_widget:
                 # Guardar la posición actual del cursor
@@ -667,7 +799,7 @@ class EditCommand(QUndoCommand):
 
                 text_widget.blockSignals(True)
                 text_widget.setPlainText(value)
-                
+
                 # Restaurar la posición del cursor
                 new_cursor = text_widget.textCursor()
                 new_cursor.setPosition(min(position, len(value)))
@@ -680,7 +812,7 @@ class EditCommand(QUndoCommand):
             if item:
                 item.setText(value)
         # Actualizar el completer si es necesario
-        if self.column == 2:
+        if self.column == self.table_window.COL_CHARACTER:
             self.table_window.update_character_completer()
 
 
@@ -690,6 +822,7 @@ class AddRowCommand(QUndoCommand):
         self.table_window = table_window
         self.row = row
         self.new_row_data = {
+            'SCENE': '1',  # Número de SCENE por defecto
             'IN': '00:00:00:00',
             'OUT': '00:00:00:00',
             'PERSONAJE': 'Personaje',
@@ -703,23 +836,25 @@ class AddRowCommand(QUndoCommand):
 
     def redo(self):
         self.table_window.table_widget.insertRow(self.row)
-        in_item = self.table_window.create_table_item(self.new_row_data['IN'])
-        out_item = self.table_window.create_table_item(self.new_row_data['OUT'])
-        personaje_item = self.table_window.create_table_item(self.new_row_data['PERSONAJE'])
 
-        self.table_window.table_widget.setItem(self.row, 0, in_item)
-        self.table_window.table_widget.setItem(self.row, 1, out_item)
-        self.table_window.table_widget.setItem(self.row, 2, personaje_item)
-
-        text_edit = self.table_window.create_text_edit(self.new_row_data['DIÁLOGO'], self.row, 3)
-        self.table_window.table_widget.setCellWidget(self.row, 3, text_edit)
+        # Asignar los valores de la fila
+        for col_index, col_name in enumerate(self.table_window.columns):
+            value = self.new_row_data.get(col_name, '')
+            if col_name == "DIÁLOGO":
+                text_edit = self.table_window.create_text_edit(value, self.row, self.table_window.COL_DIALOGUE)
+                self.table_window.table_widget.setCellWidget(self.row, self.table_window.COL_DIALOGUE, text_edit)
+            else:
+                item = self.table_window.create_table_item(value, col_index)
+                self.table_window.table_widget.setItem(self.row, col_index, item)
 
         self.table_window.adjust_row_height(self.row)
 
-        upper_df = self.table_window.dataframe.iloc[:self.row] if self.row > 0 else pd.DataFrame()
-        lower_df = self.table_window.dataframe.iloc[self.row:] if self.row < self.table_window.dataframe.shape[0] else pd.DataFrame()
+        # Insertar datos en el DataFrame
+        upper_df = self.table_window.dataframe.iloc[:self.row] if self.row > 0 else pd.DataFrame(columns=self.table_window.dataframe.columns)
+        lower_df = self.table_window.dataframe.iloc[self.row:] if self.row < self.table_window.dataframe.shape[0] else pd.DataFrame(columns=self.table_window.dataframe.columns)
         new_df = pd.DataFrame([self.new_row_data])
         self.table_window.dataframe = pd.concat([upper_df, new_df, lower_df], ignore_index=True)
+
 
 class RemoveRowsCommand(QUndoCommand):
     def __init__(self, table_window, rows):
@@ -733,29 +868,31 @@ class RemoveRowsCommand(QUndoCommand):
         for i, row in enumerate(self.rows):
             self.table_window.table_widget.insertRow(row)
             data_row = self.removed_data.iloc[i]
-            in_item = self.table_window.create_table_item(data_row['IN'])
-            out_item = self.table_window.create_table_item(data_row['OUT'])
-            personaje_item = self.table_window.create_table_item(data_row['PERSONAJE'])
 
-            self.table_window.table_widget.setItem(row, 0, in_item)
-            self.table_window.table_widget.setItem(row, 1, out_item)
-            self.table_window.table_widget.setItem(row, 2, personaje_item)
-
-            text_edit = self.table_window.create_text_edit(data_row['DIÁLOGO'], row, 3)
-            self.table_window.table_widget.setCellWidget(row, 3, text_edit)
+            # Asignar los valores de la fila
+            for col_index, col_name in enumerate(self.table_window.columns):
+                value = data_row[col_name]
+                if col_name == "DIÁLOGO":
+                    dialogo_text = str(value)
+                    dialogo_item = self.table_window.create_text_edit(dialogo_text, row, self.table_window.COL_DIALOGUE)
+                    self.table_window.table_widget.setCellWidget(row, self.table_window.COL_DIALOGUE, dialogo_item)
+                else:
+                    item = self.table_window.create_table_item(str(value), col_index)
+                    self.table_window.table_widget.setItem(row, col_index, item)
 
             self.table_window.adjust_row_height(row)
 
-            self.table_window.dataframe = pd.concat([
-                self.table_window.dataframe.iloc[:row],
-                pd.DataFrame([data_row]),
-                self.table_window.dataframe.iloc[row:]
-            ]).reset_index(drop=True)
+            # Insertar datos en el DataFrame
+            upper_df = self.table_window.dataframe.iloc[:row] if row > 0 else pd.DataFrame(columns=self.table_window.dataframe.columns)
+            lower_df = self.table_window.dataframe.iloc[row:] if row < self.table_window.dataframe.shape[0] else pd.DataFrame(columns=self.table_window.dataframe.columns)
+            new_df = pd.DataFrame([data_row.to_dict()])
+            self.table_window.dataframe = pd.concat([upper_df, new_df, lower_df], ignore_index=True)
 
     def redo(self):
         for row in reversed(self.rows):
             self.table_window.table_widget.removeRow(row)
             self.table_window.dataframe = self.table_window.dataframe.drop(row).reset_index(drop=True)
+
 
 class MoveRowCommand(QUndoCommand):
     def __init__(self, table_window, source_row, target_row):
@@ -772,7 +909,7 @@ class MoveRowCommand(QUndoCommand):
         self._move_row(self.source_row, self.target_row)
 
     def _move_row(self, from_row, to_row):
-        # Mover datos en el dataframe
+        # Mover datos en el DataFrame
         df = self.table_window.dataframe
         row_data = df.iloc[from_row].copy()
         df = df.drop(from_row).reset_index(drop=True)
@@ -786,7 +923,7 @@ class MoveRowCommand(QUndoCommand):
         # Extraer datos antes de eliminar la fila
         row_data_items = {}
         for col in range(self.table_widget.columnCount()):
-            if col == 3:
+            if col == self.table_window.COL_DIALOGUE:
                 widget = self.table_widget.cellWidget(from_row, col)
                 if widget:
                     text = widget.toPlainText()
@@ -801,17 +938,18 @@ class MoveRowCommand(QUndoCommand):
         self.table_widget.insertRow(to_row)
 
         for col in range(self.table_widget.columnCount()):
-            if col == 3:
+            if col == self.table_window.COL_DIALOGUE:
                 text = row_data_items.get(col, '')
                 text_edit = self.table_window.create_text_edit(text, to_row, col)
                 self.table_widget.setCellWidget(to_row, col, text_edit)
             else:
                 text = row_data_items.get(col, '')
-                item = self.table_window.create_table_item(text)
-                self.table_widget.setItem(to_row, col, item)
+                item = self.table_window.create_table_item(text, col)
+                self.table_window.table_widget.setItem(to_row, col, item)
 
         self.table_widget.blockSignals(False)
         self.table_window.adjust_row_height(to_row)
+
 
 class SplitInterventionCommand(QUndoCommand):
     def __init__(self, table_window, row, before_text, after_text):
@@ -821,6 +959,7 @@ class SplitInterventionCommand(QUndoCommand):
         self.before_text = before_text
         self.after_text = after_text
         self.new_row_data = {
+            'SCENE': self.table_window.dataframe.at[row, 'SCENE'],
             'IN': '00:00:00:00',
             'OUT': '00:00:00:00',
             'PERSONAJE': self.table_window.dataframe.at[row, 'PERSONAJE'],
@@ -829,36 +968,39 @@ class SplitInterventionCommand(QUndoCommand):
         self.setText("Separar intervención")
 
     def undo(self):
-        # Restaurar el texto original
-        command = EditCommand(self.table_window, self.row, 3, self.before_text, self.before_text + self.after_text)
-        command.redo()
+        # Restaurar el texto original en la fila original
+        command = EditCommand(self.table_window, self.row, self.table_window.COL_DIALOGUE, self.before_text, self.before_text + self.after_text)
+        self.table_window.undo_stack.push(command)
+
+        # Eliminar la fila separada
         self.table_window.table_widget.removeRow(self.row + 1)
         self.table_window.dataframe = self.table_window.dataframe.drop(self.row + 1).reset_index(drop=True)
 
     def redo(self):
         # Actualizar el texto de la fila original
-        command = EditCommand(self.table_window, self.row, 3, self.before_text + self.after_text, self.before_text)
-        command.redo()
+        command = EditCommand(self.table_window, self.row, self.table_window.COL_DIALOGUE, self.before_text + self.after_text, self.before_text)
+        self.table_window.undo_stack.push(command)
 
         # Insertar nueva fila
         self.table_window.table_widget.insertRow(self.row + 1)
-        in_item = self.table_window.create_table_item(self.new_row_data['IN'])
-        out_item = self.table_window.create_table_item(self.new_row_data['OUT'])
-        personaje_item = self.table_window.create_table_item(self.new_row_data['PERSONAJE'])
-
-        self.table_window.table_widget.setItem(self.row + 1, 0, in_item)
-        self.table_window.table_widget.setItem(self.row + 1, 1, out_item)
-        self.table_window.table_widget.setItem(self.row + 1, 2, personaje_item)
-
-        text_edit = self.table_window.create_text_edit(self.new_row_data['DIÁLOGO'], self.row + 1, 3)
-        self.table_window.table_widget.setCellWidget(self.row + 1, 3, text_edit)
+        for col_index, col_name in enumerate(self.table_window.columns):
+            if col_name == "DIÁLOGO":
+                dialogo_text = self.new_row_data['DIÁLOGO']
+                dialogo_item = self.table_window.create_text_edit(dialogo_text, self.row + 1, self.table_window.COL_DIALOGUE)
+                self.table_window.table_widget.setCellWidget(self.row + 1, self.table_window.COL_DIALOGUE, dialogo_item)
+            else:
+                value = self.new_row_data.get(col_name, '')
+                item = self.table_window.create_table_item(value, col_index)
+                self.table_window.table_widget.setItem(self.row + 1, col_index, item)
 
         self.table_window.adjust_row_height(self.row + 1)
 
-        upper_df = self.table_window.dataframe.iloc[:self.row + 1] if self.row >= 0 else pd.DataFrame()
-        lower_df = self.table_window.dataframe.iloc[self.row + 1:] if self.row + 1 < self.table_window.dataframe.shape[0] else pd.DataFrame()
+        # Insertar datos en el DataFrame
+        upper_df = self.table_window.dataframe.iloc[:self.row + 1] if self.row >= 0 else pd.DataFrame(columns=self.table_window.dataframe.columns)
+        lower_df = self.table_window.dataframe.iloc[self.row + 1:] if self.row + 1 < self.table_window.dataframe.shape[0] else pd.DataFrame(columns=self.table_window.dataframe.columns)
         new_df = pd.DataFrame([self.new_row_data])
         self.table_window.dataframe = pd.concat([upper_df, new_df, lower_df], ignore_index=True)
+
 
 class MergeInterventionsCommand(QUndoCommand):
     def __init__(self, table_window, row, merged_dialog):
@@ -872,32 +1014,34 @@ class MergeInterventionsCommand(QUndoCommand):
 
     def undo(self):
         # Restaurar diálogo original
-        command = EditCommand(self.table_window, self.row, 3, self.merged_dialog, self.original_dialog)
-        command.redo()
+        command = EditCommand(self.table_window, self.row, self.table_window.COL_DIALOGUE, self.merged_dialog, self.original_dialog)
+        self.table_window.undo_stack.push(command)
+
         # Restaurar fila eliminada
         self.table_window.table_widget.insertRow(self.row + 1)
-        in_item = self.table_window.create_table_item(self.next_row_data['IN'])
-        out_item = self.table_window.create_table_item(self.next_row_data['OUT'])
-        personaje_item = self.table_window.create_table_item(self.next_row_data['PERSONAJE'])
-
-        self.table_window.table_widget.setItem(self.row + 1, 0, in_item)
-        self.table_window.table_widget.setItem(self.row + 1, 1, out_item)
-        self.table_window.table_widget.setItem(self.row + 1, 2, personaje_item)
-
-        text_edit = self.table_window.create_text_edit(self.next_row_data['DIÁLOGO'], self.row + 1, 3)
-        self.table_window.table_widget.setCellWidget(self.row + 1, 3, text_edit)
+        for col_index, col_name in enumerate(self.table_window.columns):
+            if col_name == "DIÁLOGO":
+                dialogo_text = self.next_row_data[col_name]
+                dialogo_item = self.table_window.create_text_edit(dialogo_text, self.row + 1, self.table_window.COL_DIALOGUE)
+                self.table_window.table_widget.setCellWidget(self.row + 1, self.table_window.COL_DIALOGUE, dialogo_item)
+            else:
+                value = self.next_row_data[col_name]
+                item = self.table_window.create_table_item(str(value), col_index)
+                self.table_window.table_widget.setItem(self.row + 1, col_index, item)
 
         self.table_window.adjust_row_height(self.row + 1)
 
+        # Insertar datos en el DataFrame
         upper_df = self.table_window.dataframe.iloc[:self.row + 1]
         lower_df = self.table_window.dataframe.iloc[self.row + 1:]
-        self.table_window.dataframe = pd.concat([upper_df, pd.DataFrame([self.next_row_data]), lower_df], ignore_index=True)
+        new_df = pd.DataFrame([self.next_row_data.to_dict()])
+        self.table_window.dataframe = pd.concat([upper_df, new_df, lower_df], ignore_index=True)
 
     def redo(self):
         # Actualizar diálogo
-        command = EditCommand(self.table_window, self.row, 3, self.original_dialog, self.merged_dialog)
-        command.redo()
+        command = EditCommand(self.table_window, self.row, self.table_window.COL_DIALOGUE, self.original_dialog, self.merged_dialog)
+        self.table_window.undo_stack.push(command)
+
         # Eliminar siguiente fila
         self.table_window.table_widget.removeRow(self.row + 1)
         self.table_window.dataframe = self.table_window.dataframe.drop(self.row + 1).reset_index(drop=True)
-
