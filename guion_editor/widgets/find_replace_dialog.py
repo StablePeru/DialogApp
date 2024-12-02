@@ -2,6 +2,8 @@
 
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QFormLayout, QLineEdit, QHBoxLayout, QPushButton, QMessageBox
 
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QFormLayout, QLineEdit, QHBoxLayout, QPushButton, QMessageBox, QCheckBox
+
 class FindReplaceDialog(QDialog):
     def __init__(self, table_window):
         super().__init__()
@@ -20,7 +22,15 @@ class FindReplaceDialog(QDialog):
 
         form_layout.addRow("Buscar:", self.find_text_input)
         form_layout.addRow("Reemplazar por:", self.replace_text_input)
+
+        # Añadir opciones de búsqueda
+        self.search_in_character = QCheckBox("Buscar en Personaje")
+        self.search_in_dialogue = QCheckBox("Buscar en Diálogo")
+        self.search_in_dialogue.setChecked(True)  # Por defecto, buscar en Diálogo
+
         layout.addLayout(form_layout)
+        layout.addWidget(self.search_in_character)
+        layout.addWidget(self.search_in_dialogue)
 
         # Botones
         button_layout = QHBoxLayout()
@@ -48,14 +58,22 @@ class FindReplaceDialog(QDialog):
         if not search_text:
             return
         for row in range(self.table_window.table_widget.rowCount()):
-            # Buscar en la columna 'PERSONAJE' (índice 2)
-            personaje_item = self.table_window.table_widget.item(row, 2)
-            personaje_text = personaje_item.text().lower() if personaje_item else ''
-            # Buscar en la columna 'DIÁLOGO' (índice 3)
-            dialog_widget = self.table_window.table_widget.cellWidget(row, 3)
-            dialog_text = dialog_widget.toPlainText().lower() if dialog_widget else ''
-            if search_text in personaje_text or search_text in dialog_text:
+            found_in_row = False
+            # Buscar en 'PERSONAJE' si está seleccionado
+            if self.search_in_character.isChecked():
+                personaje_item = self.table_window.table_widget.item(row, 4)
+                personaje_text = personaje_item.text().lower() if personaje_item else ''
+                if search_text in personaje_text:
+                    found_in_row = True
+            # Buscar en 'DIÁLOGO' si está seleccionado
+            if self.search_in_dialogue.isChecked():
+                dialog_widget = self.table_window.table_widget.cellWidget(row, 5)
+                dialog_text = dialog_widget.toPlainText().lower() if dialog_widget else ''
+                if search_text in dialog_text:
+                    found_in_row = True
+            if found_in_row:
                 self.current_search_results.append(row)
+
 
     def find_next(self):
         search_text = self.find_text_input.text().lower()
@@ -99,4 +117,5 @@ class FindReplaceDialog(QDialog):
         if not find_text:
             QMessageBox.information(self, "Reemplazar", "Por favor, ingrese el texto a buscar.")
             return
-        self.table_window.find_and_replace(find_text, replace_text)
+        self.table_window.find_and_replace(find_text, replace_text, self.search_in_character.isChecked(), self.search_in_dialogue.isChecked())
+

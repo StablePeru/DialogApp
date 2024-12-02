@@ -732,31 +732,34 @@ class TableWindow(QWidget):
         # Emitir señal de cambio de nombre
         self.character_name_changed.emit()
 
-    def find_and_replace(self, find_text, replace_text):
+    def find_and_replace(self, find_text, replace_text, search_in_character=True, search_in_dialogue=True):
         try:
             for row in range(self.table_widget.rowCount()):
-                # Reemplazar en diálogos
-                dialog_widget = self.table_widget.cellWidget(row, self.COL_DIALOGUE)
-                if dialog_widget:
-                    text = dialog_widget.toPlainText()
-                    if find_text in text:
-                        new_text = text.replace(find_text, replace_text)
-                        command = EditCommand(self, row, self.COL_DIALOGUE, text, new_text)
-                        self.undo_stack.push(command)
-                        self.unsaved_changes = True
+                # Reemplazar en diálogos si está seleccionado
+                if search_in_dialogue:
+                    dialog_widget = self.table_widget.cellWidget(row, self.COL_DIALOGUE)
+                    if dialog_widget:
+                        text = dialog_widget.toPlainText()
+                        if find_text in text:
+                            new_text = text.replace(find_text, replace_text)
+                            command = EditCommand(self, row, self.COL_DIALOGUE, text, new_text)
+                            self.undo_stack.push(command)
+                            self.unsaved_changes = True
 
-                # Reemplazar en personajes
-                character_item = self.table_widget.item(row, self.COL_CHARACTER)
-                if character_item:
-                    text = character_item.text()
-                    if find_text in text:
-                        new_text = text.replace(find_text, replace_text)
-                        command = EditCommand(self, row, self.COL_CHARACTER, text, new_text)
-                        self.undo_stack.push(command)
-                        self.unsaved_changes = True
+                # Reemplazar en personajes si está seleccionado
+                if search_in_character:
+                    character_item = self.table_widget.item(row, self.COL_CHARACTER)
+                    if character_item:
+                        text = character_item.text()
+                        if find_text in text:
+                            new_text = text.replace(find_text, replace_text)
+                            command = EditCommand(self, row, self.COL_CHARACTER, text, new_text)
+                            self.undo_stack.push(command)
+                            self.unsaved_changes = True
             QMessageBox.information(self, "Buscar y Reemplazar", "Reemplazo completado.")
         except Exception as e:
             self.handle_exception(e, "Error en buscar y reemplazar")
+
 
     def handle_exception(self, exception, message):
         QMessageBox.critical(self, "Error", f"{message}: {str(exception)}")
@@ -827,33 +830,23 @@ class EditCommand(QUndoCommand):
             # La columna no está en el DataFrame
             return
 
-        # Determinar el tipo de datos de la columna
-        column_dtype = self.table_window.dataframe[df_col_name].dtype
-
-        # Convertir el valor al tipo adecuado
-        try:
-            if pd.api.types.is_integer_dtype(column_dtype):
-                value = int(value)
-            elif pd.api.types.is_float_dtype(column_dtype):
-                value = float(value)
-            else:
-                value = str(value)
-        except ValueError:
-            QMessageBox.warning(self.table_window, "Error de Tipo", f"El valor '{value}' no es compatible con el tipo de datos de la columna '{df_col_name}'.")
-            return
-
         # Asignar el valor al DataFrame
         self.table_window.dataframe.at[self.row, df_col_name] = value
 
         # Actualizar la interfaz de usuario
         if self.column == self.table_window.COL_DIALOGUE:
-            # ... código existente para actualizar el diálogo ...
-            pass
+            # Actualizar el QTextEdit en la celda
+            text_widget = self.table_window.table_widget.cellWidget(self.row, self.column)
+            if text_widget:
+                text_widget.blockSignals(True)
+                text_widget.setPlainText(str(value))
+                text_widget.blockSignals(False)
+            # Ajustar la altura de la fila si es necesario
+            self.table_window.adjust_row_height(self.row)
         else:
             item = self.table_window.table_widget.item(self.row, self.column)
             if item:
                 item.setText(str(value))
-
 
 class AddRowCommand(QUndoCommand):
     def __init__(self, table_window, row):
