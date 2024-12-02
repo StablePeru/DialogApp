@@ -362,35 +362,18 @@ class MainWindow(QMainWindow):
             )
 
     def change_scene(self):
-        selected_items = self.tableWindow.table_widget.selectedItems()
-        if not selected_items:
-            QMessageBox.warning(self, "Cambio de Escena", "Por favor, selecciona una intervención para marcar el cambio de escena.")
-            return  # No hay selección
-
-        # Asumir que solo una fila está seleccionada
-        selected_row = selected_items[0].row()
-
-        # Obtener el número de escena actual (debería ser 1 por defecto)
-        scene_item = self.tableWindow.table_widget.item(selected_row, 0)
-        if scene_item:
-            current_scene = int(scene_item.text())
-
-            # Opcional: resaltar la fila para indicar el cambio de escena
-            for col in range(self.tableWindow.table_widget.columnCount()):
-                item = self.tableWindow.table_widget.item(selected_row, col)
-                if item:
-                    item.setBackground(QColor("#FFD700"))  # Amarillo dorado
-
-            # Incrementar los números de escena a partir de la siguiente fila
-            self.increment_scenes_from_row(selected_row + 1)
+        self.tableWindow.change_scene()
 
     def increment_scenes_from_row(self, start_row):
         total_rows = self.tableWindow.table_widget.rowCount()
         for row in range(start_row, total_rows):
             scene_item = self.tableWindow.table_widget.item(row, 0)
             if scene_item:
-                current_scene = int(scene_item.text())
-                scene_item.setText(str(current_scene + 1))
+                try:
+                    current_scene = int(scene_item.text())
+                    scene_item.setText(str(current_scene + 1))  # Incrementar el número de escena
+                except ValueError:
+                    print(f"Advertencia: El valor en la fila {row} no es un número válido.")
 
     def closeEvent(self, event):
         # Verificar si hay cambios sin guardar en TableWindow

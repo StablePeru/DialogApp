@@ -3,7 +3,7 @@
 import json
 import os
 from PyQt5.QtCore import pyqtSignal, QObject, QEvent, Qt
-from PyQt5.QtGui import QFont, QKeySequence
+from PyQt5.QtGui import QFont, QKeySequence, QColor
 from PyQt5.QtWidgets import (
     QWidget, QTableWidgetItem, QTextEdit, QFileDialog, QAbstractItemView,
     QMessageBox, QVBoxLayout, QHBoxLayout, QPushButton, QShortcut, QCompleter,
@@ -70,6 +70,7 @@ class TableWindow(QWidget):
         self.unsaved_changes = False  # Bandera para cambios sin guardar
         self.undo_stack = QUndoStack(self)  # Pila para deshacer/rehacer
         self.has_scene_numbers = False  # Bandera para verificar si hay números de escena en los datos importados
+        self.current_script_name = None  # Atributo para almacenar el nombre del guion actual
         self.setup_ui()
 
         # Atajos para deshacer y rehacer
@@ -179,6 +180,13 @@ class TableWindow(QWidget):
 
             if not all(col in self.dataframe.columns for col in required_columns):
                 raise ValueError("Faltan columnas requeridas en los datos.")
+            # Almacenar el nombre del guion actual
+            self.current_script_name = os.path.basename(file_name)
+
+            # Actualizar el título de la ventana principal
+            if self.main_window:
+                self.main_window.setWindowTitle(f"Editor de Guion - {self.current_script_name}")
+
             # Asignar IDs únicos
             self.dataframe.insert(0, 'ID', range(len(self.dataframe)))
             self.populate_table()
@@ -299,6 +307,11 @@ class TableWindow(QWidget):
 
             new_text = item.text()
             old_text = self.dataframe.at[row, df_col]
+
+            # Si la columna es 'SCENE', convierte el valor a entero
+            if df_col == 'SCENE':
+                new_text = int(new_text)
+
             if new_text != old_text:
                 command = EditCommand(self, row, column, old_text, new_text)
                 self.undo_stack.push(command)
@@ -427,9 +440,20 @@ class TableWindow(QWidget):
             # No incluir la columna 'ID' en la exportación
             df_to_export = self.dataframe.drop(columns=['ID'])
             df_to_export.to_excel(path, index=False)
+
+            # Almacenar el nombre del guion actual
+            self.current_script_name = os.path.basename(path)
+
+            # Actualizar el título de la ventana principal
+            self.update_window_title()
+
+            self.unsaved_changes = False  # Cambios guardados
+            self.update_window_title()
+
         except Exception as e:
             self.handle_exception(e, "Error al guardar en Excel")
             raise e
+
 
 
     def import_from_excel(self):
@@ -540,8 +564,8 @@ class TableWindow(QWidget):
                 # Verificar si 'SCENE' está presente
                 if 'SCENE' not in df.columns:
                     self.has_scene_numbers = False
-                    df['SCENE'] = '1'  # Asignar '1' a todas las escenas si no están presentes
-                    print("Importación desde Excel sin números de escena. Asignando '1' a todas las escenas.")
+                    df['SCENE'] = 1  # Asignar 1 a todas las escenas si no están presentes
+                    print("Importación desde Excel sin números de escena. Asignando 1 a todas las escenas.")
                 else:
                     # Verificar si 'SCENE' tiene múltiples valores
                     scene_values = df['SCENE'].astype(str).tolist()
@@ -551,12 +575,19 @@ class TableWindow(QWidget):
                         print("Importación desde Excel con números de escena. Preservando escenas existentes.")
                     else:
                         self.has_scene_numbers = False
-                        df['SCENE'] = '1'  # Asignar '1' a todas las escenas si todos son '1'
-                        print("Importación desde Excel sin números de escena (todos '1'). Asignando '1' a todas las escenas.")
+                        df['SCENE'] = 1  # Asignar 1 a todas las escenas si todos son '1'
+                        print("Importación desde Excel sin números de escena (todos '1'). Asignando 1 a todas las escenas.")
                 self.dataframe = df
                 self.populate_table()
                 QMessageBox.information(self, "Éxito", "Datos importados correctamente desde Excel.")
                 self.unsaved_changes = False  # Datos cargados, no hay cambios sin guardar
+
+                # Almacenar el nombre del guion actual
+                self.current_script_name = os.path.basename(path)
+
+                # Actualizar el título de la ventana principal
+                self.update_window_title()
+
                 # Agregar a archivos recientes
                 if self.main_window:
                     self.main_window.add_to_recent_files(path)
@@ -565,6 +596,7 @@ class TableWindow(QWidget):
                 QMessageBox.information(self, "Carga cancelada", "La carga del archivo Excel ha sido cancelada.")
         except Exception as e:
             self.handle_exception(e, "Error al cargar desde Excel")
+
 
     def merge_interventions(self):
         try:
@@ -632,9 +664,26 @@ class TableWindow(QWidget):
             data = self.dataframe.drop(columns=['ID']).to_dict(orient='records')
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
+
+            # Almacenar el nombre del guion actual
+            self.current_script_name = os.path.basename(path)
+
+            # Actualizar el título de la ventana principal
+            self.update_window_title()
+
+            self.unsaved_changes = False  # Cambios guardados
+            self.update_window_title()
+
         except Exception as e:
             self.handle_exception(e, "Error al guardar en JSON")
             raise e
+
+
+    def update_window_title(self):
+        prefix = "*" if self.unsaved_changes else ""
+        script_name = self.current_script_name if self.current_script_name else "Sin Título"
+        if self.main_window:
+            self.main_window.setWindowTitle(f"{prefix}Editor de Guion - {script_name}")
 
 
     def load_from_json(self):
@@ -653,8 +702,8 @@ class TableWindow(QWidget):
                 # Verificar si 'SCENE' está presente
                 if 'SCENE' not in df.columns:
                     self.has_scene_numbers = False
-                    df['SCENE'] = '1'  # Asignar '1' a todas las escenas si no están presentes
-                    print("Importación desde JSON sin números de escena. Asignando '1' a todas las escenas.")
+                    df['SCENE'] = 1  # Asignar 1 a todas las escenas si no están presentes
+                    print("Importación desde JSON sin números de escena. Asignando 1 a todas las escenas.")
                 else:
                     # Verificar si 'SCENE' tiene múltiples valores
                     scene_values = df['SCENE'].astype(str).tolist()
@@ -664,17 +713,25 @@ class TableWindow(QWidget):
                         print("Importación desde JSON con números de escena. Preservando escenas existentes.")
                     else:
                         self.has_scene_numbers = False
-                        df['SCENE'] = '1'  # Asignar '1' a todas las escenas si todos son '1'
-                        print("Importación desde JSON sin números de escena (todos '1'). Asignando '1' a todas las escenas.")
+                        df['SCENE'] = 1  # Asignar 1 a todas las escenas si todos son '1'
+                        print("Importación desde JSON sin números de escena (todos '1'). Asignando 1 a todas las escenas.")
                 self.dataframe = df
                 self.populate_table()
                 QMessageBox.information(self, "Éxito", "Datos cargados correctamente desde JSON.")
                 self.unsaved_changes = False  # Datos cargados, no hay cambios sin guardar
+
+                # Almacenar el nombre del guion actual
+                self.current_script_name = os.path.basename(path)
+
+                # Actualizar el título de la ventana principal
+                self.update_window_title()
+
             else:
                 # El usuario canceló la carga
                 QMessageBox.information(self, "Carga cancelada", "La carga del archivo JSON ha sido cancelada.")
         except Exception as e:
             self.handle_exception(e, "Error al cargar desde JSON")
+
 
     def copy_in_out_to_next(self):
         try:
@@ -804,6 +861,19 @@ class TableWindow(QWidget):
             if item and int(item.text()) == id_value:
                 return row
         return None
+    
+    # En table_window.py
+    def change_scene(self):
+        selected_row = self.table_widget.currentRow()
+        if selected_row == -1:
+            QMessageBox.warning(self, "Cambio de Escena", "Por favor, selecciona una intervención para marcar el cambio de escena.")
+            return
+
+        command = ChangeSceneCommand(self, selected_row)
+        self.undo_stack.push(command)
+        self.unsaved_changes = True
+
+
 
 
 # Clases de comandos para deshacer/rehacer
@@ -831,7 +901,20 @@ class EditCommand(QUndoCommand):
             return
 
         # Asignar el valor al DataFrame
-        self.table_window.dataframe.at[self.row, df_col_name] = value
+        if df_col_name == 'SCENE':
+            # Convertir el valor a entero
+            try:
+                int_value = int(value)
+            except ValueError:
+                QMessageBox.warning(
+                    self.table_window,
+                    "Error de Tipo",
+                    f"El valor '{value}' no es un número entero válido."
+                )
+                return
+            self.table_window.dataframe.at[self.row, df_col_name] = int_value
+        else:
+            self.table_window.dataframe.at[self.row, df_col_name] = value
 
         # Actualizar la interfaz de usuario
         if self.column == self.table_window.COL_DIALOGUE:
@@ -847,6 +930,7 @@ class EditCommand(QUndoCommand):
             item = self.table_window.table_widget.item(self.row, self.column)
             if item:
                 item.setText(str(value))
+
 
 class AddRowCommand(QUndoCommand):
     def __init__(self, table_window, row):
@@ -1123,3 +1207,50 @@ class MergeInterventionsCommand(QUndoCommand):
         # Eliminar siguiente fila
         self.table_window.table_widget.removeRow(self.row + 1)
         self.table_window.dataframe = self.table_window.dataframe.drop(self.row + 1).reset_index(drop=True)
+
+class ChangeSceneCommand(QUndoCommand):
+    def __init__(self, table_window, selected_row):
+        super().__init__()
+        self.table_window = table_window
+        self.selected_row = selected_row
+        self.setText("Cambiar número de escena")
+
+        # Almacenar los números de escena antiguos desde la fila seleccionada en adelante
+        self.old_scene_numbers = self.table_window.dataframe['SCENE'].iloc[selected_row:].tolist()
+
+        # Determinar el nuevo número de escena
+        if selected_row > 0:
+            previous_scene_number = int(self.table_window.dataframe.at[selected_row - 1, 'SCENE'])
+            self.new_scene_number = previous_scene_number + 1
+        else:
+            self.new_scene_number = 1  # Comenzar desde 1 si es la primera fila
+
+    def undo(self):
+        # Restaurar los números de escena antiguos
+        for idx, scene_number in enumerate(self.old_scene_numbers):
+            row = self.selected_row + idx
+            self.table_window.dataframe.at[row, 'SCENE'] = scene_number
+            item = self.table_window.table_widget.item(row, self.table_window.COL_SCENE)
+            if item:
+                item.setText(str(scene_number))
+                # Restaurar el color de fondo si es la fila seleccionada
+                if idx == 0:
+                    for col in range(self.table_window.table_widget.columnCount()):
+                        cell_item = self.table_window.table_widget.item(row, col)
+                        if cell_item:
+                            cell_item.setBackground(Qt.white)
+
+    def redo(self):
+        # Asignar el nuevo número de escena a todas las filas subsiguientes
+        total_rows = self.table_window.table_widget.rowCount()
+        for row in range(self.selected_row, total_rows):
+            self.table_window.dataframe.at[row, 'SCENE'] = self.new_scene_number
+            item = self.table_window.table_widget.item(row, self.table_window.COL_SCENE)
+            if item:
+                item.setText(str(self.new_scene_number))
+                # Resaltar la fila seleccionada
+                if row == self.selected_row:
+                    for col in range(self.table_window.table_widget.columnCount()):
+                        cell_item = self.table_window.table_widget.item(row, col)
+                        if cell_item:
+                            cell_item.setBackground(QColor("#FFD700"))  # Amarillo dorado
