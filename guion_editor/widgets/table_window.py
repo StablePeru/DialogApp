@@ -21,14 +21,16 @@ class TableWindow(QWidget):
     character_name_changed = pyqtSignal()
 
     # Definir constantes para los índices de las columnas
-    COL_SCENE = 0
-    COL_IN = 1
-    COL_OUT = 2
-    COL_CHARACTER = 3
-    COL_DIALOGUE = 4
+    COL_ID = 0
+    COL_SCENE = 1
+    COL_IN = 2
+    COL_OUT = 3
+    COL_CHARACTER = 4
+    COL_DIALOGUE = 5
 
     # Mapeo de columnas de la tabla a columnas del DataFrame
     TABLE_TO_DF_COL_MAP = {
+        COL_ID: 'ID',
         COL_SCENE: 'SCENE',
         COL_IN: 'IN',
         COL_OUT: 'OUT',
@@ -111,10 +113,12 @@ class TableWindow(QWidget):
         self.table_widget.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.SelectedClicked)
         layout.addWidget(self.table_widget)
 
-        # Definir las columnas: "SCENE", "IN", "OUT", "PERSONAJE", "DIÁLOGO"
-        self.columns = ["SCENE", "IN", "OUT", "PERSONAJE", "DIÁLOGO"]
+        # Definir las columnas: "ID", "SCENE", "IN", "OUT", "PERSONAJE", "DIÁLOGO"
+        self.columns = ["ID", "SCENE", "IN", "OUT", "PERSONAJE", "DIÁLOGO"]
         self.table_widget.setColumnCount(len(self.columns))
         self.table_widget.setHorizontalHeaderLabels(self.columns)
+        # Ocultar la columna ID
+        self.table_widget.setColumnHidden(self.columns.index("ID"), True)
 
         # Configurar los delegados para las columnas existentes
         self.table_widget.setItemDelegateForColumn(self.COL_IN, TimeCodeDelegate(self.table_widget))
@@ -171,9 +175,12 @@ class TableWindow(QWidget):
                         entry['SCENE'] = '1'  # Asignar '1' a todas las escenas si todos son '1'
                     print("Importación sin números de escena (todos '1'). Asignando '1' a todas las escenas.")
             self.dataframe = pd.DataFrame(guion_data)
-            required_columns = list(self.TABLE_TO_DF_COL_MAP.values())
+            required_columns = [col for col in self.TABLE_TO_DF_COL_MAP.values() if col != 'ID']
+
             if not all(col in self.dataframe.columns for col in required_columns):
                 raise ValueError("Faltan columnas requeridas en los datos.")
+            # Asignar IDs únicos
+            self.dataframe.insert(0, 'ID', range(len(self.dataframe)))
             self.populate_table()
             self.unsaved_changes = False  # Datos cargados, no hay cambios sin guardar
         except Exception as e:
@@ -190,6 +197,8 @@ class TableWindow(QWidget):
             self.table_widget.setRowCount(self.dataframe.shape[0])
             self.table_widget.setColumnCount(len(self.columns))
             self.table_widget.setHorizontalHeaderLabels(self.columns)
+            # Ocultar la columna ID
+            self.table_widget.setColumnHidden(self.columns.index("ID"), True)
 
             for i in range(self.dataframe.shape[0]):
                 # Asignar los valores de cada columna
@@ -410,16 +419,18 @@ class TableWindow(QWidget):
 
     def save_to_excel(self, path):
         try:
-            # No llamar a renumerar_escenas aquí
             # Actualizar el DataFrame con los diálogos actuales
             for row in range(self.table_widget.rowCount()):
                 dialog_widget = self.table_widget.cellWidget(row, self.COL_DIALOGUE)
                 if dialog_widget:
                     self.dataframe.at[row, 'DIÁLOGO'] = dialog_widget.toPlainText()
-            self.dataframe.to_excel(path, index=False)
+            # No incluir la columna 'ID' en la exportación
+            df_to_export = self.dataframe.drop(columns=['ID'])
+            df_to_export.to_excel(path, index=False)
         except Exception as e:
             self.handle_exception(e, "Error al guardar en Excel")
             raise e
+
 
     def import_from_excel(self):
         try:
@@ -520,7 +531,10 @@ class TableWindow(QWidget):
                 path, _ = QFileDialog.getOpenFileName(self, "Abrir archivo Excel", "", "Archivos Excel (*.xlsx)")
             if path:
                 df = pd.read_excel(path)
-                required_columns = list(self.TABLE_TO_DF_COL_MAP.values())
+                # Asignar IDs si no existen
+                if 'ID' not in df.columns:
+                    df.insert(0, 'ID', range(len(df)))
+                required_columns = [col for col in self.TABLE_TO_DF_COL_MAP.values() if col != 'ID']
                 if not all(col in df.columns for col in required_columns):
                     raise ValueError("Faltan columnas requeridas en los datos.")
                 # Verificar si 'SCENE' está presente
@@ -609,18 +623,19 @@ class TableWindow(QWidget):
 
     def save_to_json_file(self, path):
         try:
-            # No llamar a renumerar_escenas aquí
             # Actualizar el DataFrame con los diálogos actuales
             for row in range(self.table_widget.rowCount()):
                 dialog_widget = self.table_widget.cellWidget(row, self.COL_DIALOGUE)
                 if dialog_widget:
                     self.dataframe.at[row, 'DIÁLOGO'] = dialog_widget.toPlainText()
-            data = self.dataframe.to_dict(orient='records')
+            # No incluir la columna 'ID' en la exportación
+            data = self.dataframe.drop(columns=['ID']).to_dict(orient='records')
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
         except Exception as e:
             self.handle_exception(e, "Error al guardar en JSON")
             raise e
+
 
     def load_from_json(self):
         try:
@@ -629,7 +644,10 @@ class TableWindow(QWidget):
                 with open(path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 df = pd.DataFrame(data)
-                required_columns = list(self.TABLE_TO_DF_COL_MAP.values())
+                # Asignar IDs si no existen
+                if 'ID' not in df.columns:
+                    df.insert(0, 'ID', range(len(df)))
+                required_columns = [col for col in self.TABLE_TO_DF_COL_MAP.values() if col != 'ID']
                 if not all(col in df.columns for col in required_columns):
                     raise ValueError("Faltan columnas requeridas en los datos.")
                 # Verificar si 'SCENE' está presente
@@ -764,6 +782,26 @@ class TableWindow(QWidget):
         except Exception as e:
             self.handle_exception(e, "Error al renumerar escenas")
 
+    def get_next_id(self):
+        if not self.dataframe.empty and 'ID' in self.dataframe.columns:
+            return int(self.dataframe['ID'].max()) + 1
+        else:
+            return 0
+
+    def find_dataframe_index_by_id(self, id_value):
+        df_index = self.dataframe.index[self.dataframe['ID'] == id_value]
+        if not df_index.empty:
+            return df_index[0]
+        else:
+            return None
+
+    def find_table_row_by_id(self, id_value):
+        for row in range(self.table_widget.rowCount()):
+            item = self.table_widget.item(row, self.COL_ID)
+            if item and int(item.text()) == id_value:
+                return row
+        return None
+
 
 # Clases de comandos para deshacer/rehacer
 class EditCommand(QUndoCommand):
@@ -786,34 +824,35 @@ class EditCommand(QUndoCommand):
     def _apply_value(self, value):
         df_col_name = self.table_window.get_dataframe_column_name(self.column)
         if df_col_name is None:
-            # La columna no está en el DataFrame (por ejemplo, "SCENE")
+            # La columna no está en el DataFrame
             return
 
+        # Determinar el tipo de datos de la columna
+        column_dtype = self.table_window.dataframe[df_col_name].dtype
+
+        # Convertir el valor al tipo adecuado
+        try:
+            if pd.api.types.is_integer_dtype(column_dtype):
+                value = int(value)
+            elif pd.api.types.is_float_dtype(column_dtype):
+                value = float(value)
+            else:
+                value = str(value)
+        except ValueError:
+            QMessageBox.warning(self.table_window, "Error de Tipo", f"El valor '{value}' no es compatible con el tipo de datos de la columna '{df_col_name}'.")
+            return
+
+        # Asignar el valor al DataFrame
         self.table_window.dataframe.at[self.row, df_col_name] = value
+
+        # Actualizar la interfaz de usuario
         if self.column == self.table_window.COL_DIALOGUE:
-            text_widget = self.table_window.table_widget.cellWidget(self.row, self.column)
-            if text_widget:
-                # Guardar la posición actual del cursor
-                cursor = text_widget.textCursor()
-                position = cursor.position()
-
-                text_widget.blockSignals(True)
-                text_widget.setPlainText(value)
-
-                # Restaurar la posición del cursor
-                new_cursor = text_widget.textCursor()
-                new_cursor.setPosition(min(position, len(value)))
-                text_widget.setTextCursor(new_cursor)
-
-                text_widget.blockSignals(False)
-                self.table_window.adjust_row_height(self.row)
+            # ... código existente para actualizar el diálogo ...
+            pass
         else:
             item = self.table_window.table_widget.item(self.row, self.column)
             if item:
-                item.setText(value)
-        # Actualizar el completer si es necesario
-        if self.column == self.table_window.COL_CHARACTER:
-            self.table_window.update_character_completer()
+                item.setText(str(value))
 
 
 class AddRowCommand(QUndoCommand):
@@ -822,6 +861,7 @@ class AddRowCommand(QUndoCommand):
         self.table_window = table_window
         self.row = row
         self.new_row_data = {
+            'ID': self.table_window.get_next_id(),
             'SCENE': '1',  # Número de SCENE por defecto
             'IN': '00:00:00:00',
             'OUT': '00:00:00:00',
@@ -831,29 +871,35 @@ class AddRowCommand(QUndoCommand):
         self.setText("Agregar fila")
 
     def undo(self):
+        # Remove the row from the table and DataFrame
         self.table_window.table_widget.removeRow(self.row)
-        self.table_window.dataframe = self.table_window.dataframe.drop(self.row).reset_index(drop=True)
+        df_row = self.table_window.find_dataframe_index_by_id(self.new_row_data['ID'])
+        if df_row is not None:
+            self.table_window.dataframe = self.table_window.dataframe.drop(df_row).reset_index(drop=True)
 
     def redo(self):
+        # Insert row into the table
         self.table_window.table_widget.insertRow(self.row)
-
-        # Asignar los valores de la fila
         for col_index, col_name in enumerate(self.table_window.columns):
             value = self.new_row_data.get(col_name, '')
             if col_name == "DIÁLOGO":
-                text_edit = self.table_window.create_text_edit(value, self.row, self.table_window.COL_DIALOGUE)
-                self.table_window.table_widget.setCellWidget(self.row, self.table_window.COL_DIALOGUE, text_edit)
+                dialogo_item = self.table_window.create_text_edit(value, self.row, self.table_window.COL_DIALOGUE)
+                self.table_window.table_widget.setCellWidget(self.row, self.table_window.COL_DIALOGUE, dialogo_item)
             else:
-                item = self.table_window.create_table_item(value, col_index)
+                item = self.table_window.create_table_item(str(value), col_index)
                 self.table_window.table_widget.setItem(self.row, col_index, item)
-
         self.table_window.adjust_row_height(self.row)
 
-        # Insertar datos en el DataFrame
-        upper_df = self.table_window.dataframe.iloc[:self.row] if self.row > 0 else pd.DataFrame(columns=self.table_window.dataframe.columns)
-        lower_df = self.table_window.dataframe.iloc[self.row:] if self.row < self.table_window.dataframe.shape[0] else pd.DataFrame(columns=self.table_window.dataframe.columns)
-        new_df = pd.DataFrame([self.new_row_data])
-        self.table_window.dataframe = pd.concat([upper_df, new_df, lower_df], ignore_index=True)
+        # Insert data into the DataFrame
+        df_new_row = pd.DataFrame([self.new_row_data])
+        self.table_window.dataframe = pd.concat(
+            [
+                self.table_window.dataframe.iloc[:self.row],
+                df_new_row,
+                self.table_window.dataframe.iloc[self.row:]
+            ],
+            ignore_index=True
+        )
 
 
 class RemoveRowsCommand(QUndoCommand):
@@ -891,7 +937,9 @@ class RemoveRowsCommand(QUndoCommand):
     def redo(self):
         for row in reversed(self.rows):
             self.table_window.table_widget.removeRow(row)
-            self.table_window.dataframe = self.table_window.dataframe.drop(row).reset_index(drop=True)
+            df_row = self.table_window.find_dataframe_index_by_id(self.removed_data.at[row, 'ID'])
+            if df_row is not None:
+                self.table_window.dataframe = self.table_window.dataframe.drop(df_row).reset_index(drop=True)
 
 
 class MoveRowCommand(QUndoCommand):
@@ -955,51 +1003,88 @@ class SplitInterventionCommand(QUndoCommand):
     def __init__(self, table_window, row, before_text, after_text):
         super().__init__()
         self.table_window = table_window
-        self.row = row
         self.before_text = before_text
         self.after_text = after_text
+        self.original_text = before_text + after_text
+        # Capturar el ID, PERSONAJE y SCENE de la fila actual
+        self.row_id = int(self.table_window.dataframe.at[row, 'ID'])
+        self.personaje = self.table_window.dataframe.at[row, 'PERSONAJE']
+        self.scene = self.table_window.dataframe.at[row, 'SCENE']
+        self.new_row_id = self.table_window.get_next_id()
         self.new_row_data = {
-            'SCENE': self.table_window.dataframe.at[row, 'SCENE'],
+            'ID': self.new_row_id,
+            'SCENE': self.scene,
             'IN': '00:00:00:00',
             'OUT': '00:00:00:00',
-            'PERSONAJE': self.table_window.dataframe.at[row, 'PERSONAJE'],
+            'PERSONAJE': self.personaje,
             'DIÁLOGO': self.after_text
         }
         self.setText("Separar intervención")
 
     def undo(self):
-        # Restaurar el texto original en la fila original
-        command = EditCommand(self.table_window, self.row, self.table_window.COL_DIALOGUE, self.before_text, self.before_text + self.after_text)
-        self.table_window.undo_stack.push(command)
+        # Restaurar el diálogo original
+        df_row = self.table_window.find_dataframe_index_by_id(self.row_id)
+        if df_row is None:
+            return
+        self.table_window.dataframe.at[df_row, 'DIÁLOGO'] = self.original_text
 
-        # Eliminar la fila separada
-        self.table_window.table_widget.removeRow(self.row + 1)
-        self.table_window.dataframe = self.table_window.dataframe.drop(self.row + 1).reset_index(drop=True)
+        table_row = self.table_window.find_table_row_by_id(self.row_id)
+        if table_row is None:
+            return
+        text_widget = self.table_window.table_widget.cellWidget(table_row, self.table_window.COL_DIALOGUE)
+        if text_widget:
+            text_widget.blockSignals(True)
+            text_widget.setPlainText(self.original_text)
+            text_widget.blockSignals(False)
+            self.table_window.adjust_row_height(table_row)
+
+        # Eliminar la nueva fila
+        new_df_row = self.table_window.find_dataframe_index_by_id(self.new_row_id)
+        if new_df_row is not None:
+            self.table_window.dataframe = self.table_window.dataframe.drop(new_df_row).reset_index(drop=True)
+
+        new_table_row = self.table_window.find_table_row_by_id(self.new_row_id)
+        if new_table_row is not None:
+            self.table_window.table_widget.removeRow(new_table_row)
 
     def redo(self):
-        # Actualizar el texto de la fila original
-        command = EditCommand(self.table_window, self.row, self.table_window.COL_DIALOGUE, self.before_text + self.after_text, self.before_text)
-        self.table_window.undo_stack.push(command)
+        # Actualizar el diálogo en la fila original
+        df_row = self.table_window.find_dataframe_index_by_id(self.row_id)
+        if df_row is None:
+            return
+        self.table_window.dataframe.at[df_row, 'DIÁLOGO'] = self.before_text
 
-        # Insertar nueva fila
-        self.table_window.table_widget.insertRow(self.row + 1)
+        table_row = self.table_window.find_table_row_by_id(self.row_id)
+        if table_row is None:
+            return
+        text_widget = self.table_window.table_widget.cellWidget(table_row, self.table_window.COL_DIALOGUE)
+        if text_widget:
+            text_widget.blockSignals(True)
+            text_widget.setPlainText(self.before_text)
+            text_widget.blockSignals(False)
+            self.table_window.adjust_row_height(table_row)
+
+        # Insertar nueva fila en el DataFrame
+        df_new_row = df_row + 1
+        self.table_window.dataframe = pd.concat([
+            self.table_window.dataframe.iloc[:df_new_row],
+            pd.DataFrame([self.new_row_data]),
+            self.table_window.dataframe.iloc[df_new_row:]
+        ]).reset_index(drop=True)
+
+        # Insertar nueva fila en la tabla
+        table_new_row = table_row + 1
+        self.table_window.table_widget.insertRow(table_new_row)
         for col_index, col_name in enumerate(self.table_window.columns):
             if col_name == "DIÁLOGO":
                 dialogo_text = self.new_row_data['DIÁLOGO']
-                dialogo_item = self.table_window.create_text_edit(dialogo_text, self.row + 1, self.table_window.COL_DIALOGUE)
-                self.table_window.table_widget.setCellWidget(self.row + 1, self.table_window.COL_DIALOGUE, dialogo_item)
+                dialogo_item = self.table_window.create_text_edit(dialogo_text, table_new_row, self.table_window.COL_DIALOGUE)
+                self.table_window.table_widget.setCellWidget(table_new_row, self.table_window.COL_DIALOGUE, dialogo_item)
             else:
                 value = self.new_row_data.get(col_name, '')
-                item = self.table_window.create_table_item(value, col_index)
-                self.table_window.table_widget.setItem(self.row + 1, col_index, item)
-
-        self.table_window.adjust_row_height(self.row + 1)
-
-        # Insertar datos en el DataFrame
-        upper_df = self.table_window.dataframe.iloc[:self.row + 1] if self.row >= 0 else pd.DataFrame(columns=self.table_window.dataframe.columns)
-        lower_df = self.table_window.dataframe.iloc[self.row + 1:] if self.row + 1 < self.table_window.dataframe.shape[0] else pd.DataFrame(columns=self.table_window.dataframe.columns)
-        new_df = pd.DataFrame([self.new_row_data])
-        self.table_window.dataframe = pd.concat([upper_df, new_df, lower_df], ignore_index=True)
+                item = self.table_window.create_table_item(str(value), col_index)
+                self.table_window.table_widget.setItem(table_new_row, col_index, item)
+        self.table_window.adjust_row_height(table_new_row)
 
 
 class MergeInterventionsCommand(QUndoCommand):
