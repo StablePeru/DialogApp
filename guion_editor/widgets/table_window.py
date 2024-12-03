@@ -901,7 +901,7 @@ class EditCommand(QUndoCommand):
             return
 
         # Asignar el valor al DataFrame
-        if df_col_name == 'SCENE':
+        if df_col_name in ['SCENE', 'ID']:
             # Convertir el valor a entero
             try:
                 int_value = int(value)
@@ -938,8 +938,8 @@ class AddRowCommand(QUndoCommand):
         self.table_window = table_window
         self.row = row
         self.new_row_data = {
-            'ID': self.table_window.get_next_id(),
-            'SCENE': '1',  # Número de SCENE por defecto
+            'ID': int(self.table_window.get_next_id()),  # Asegurarse de que ID es int
+            'SCENE': int(1),  # Número de SCENE por defecto como entero
             'IN': '00:00:00:00',
             'OUT': '00:00:00:00',
             'PERSONAJE': 'Personaje',
@@ -1086,8 +1086,8 @@ class SplitInterventionCommand(QUndoCommand):
         # Capturar el ID, PERSONAJE y SCENE de la fila actual
         self.row_id = int(self.table_window.dataframe.at[row, 'ID'])
         self.personaje = self.table_window.dataframe.at[row, 'PERSONAJE']
-        self.scene = self.table_window.dataframe.at[row, 'SCENE']
-        self.new_row_id = self.table_window.get_next_id()
+        self.scene = int(self.table_window.dataframe.at[row, 'SCENE'])
+        self.new_row_id = int(self.table_window.get_next_id())
         self.new_row_data = {
             'ID': self.new_row_id,
             'SCENE': self.scene,
