@@ -14,6 +14,7 @@ import pandas as pd
 from guion_editor.delegates.custom_delegates import TimeCodeDelegate, CharacterDelegate
 from guion_editor.utils.dialog_utils import leer_guion, ajustar_dialogo
 from guion_editor.widgets.custom_table_widget import CustomTableWidget
+from guion_editor.widgets.custom_text_edit import CustomTextEdit
 
 
 class TableWindow(QWidget):
@@ -229,11 +230,30 @@ class TableWindow(QWidget):
             self.handle_exception(e, "Error al llenar la tabla")
 
     def create_text_edit(self, text, row, column):
-        text_edit = QTextEdit(text)
+        text_edit = CustomTextEdit()
         text_edit.setStyleSheet("font-size: 16px;")
         text_edit.setFont(QFont("Arial", 12))
-        text_edit.textChanged.connect(self.generate_text_changed_callback(row, column))
-        return text_edit
+        text_edit.setPlainText(str(text))
+
+        # Conectar la señal editingFinished al slot correspondiente
+        text_edit.editingFinished.connect(lambda new_text, r=row, c=column: self.on_editing_finished(r, c, new_text))
+
+        return text_edit    
+
+
+    def on_editing_finished(self, row, column, new_text):
+        try:
+            df_col = self.get_dataframe_column_name(column)
+            if not df_col:
+                return
+
+            old_text = self.dataframe.at[row, df_col]
+            if new_text != old_text:
+                command = EditCommand(self, row, column, old_text, new_text)
+                self.undo_stack.push(command)
+                self.unsaved_changes = True
+        except Exception as e:
+            self.handle_exception(e, "Error al finalizar la edición del texto")
 
     def create_table_item(self, text, column):
         item = QTableWidgetItem(text)
@@ -253,7 +273,7 @@ class TableWindow(QWidget):
                     dialogo_actual = text_widget.toPlainText()
                     dialogo_ajustado = ajustar_dialogo(dialogo_actual)
                     text_widget.blockSignals(True)
-                    text_widget.setText(dialogo_ajustado)
+                    text_widget.setPlainText(dialogo_ajustado)
                     text_widget.blockSignals(False)
                     old_text = self.dataframe.at[i, 'DIÁLOGO']
                     if dialogo_actual != dialogo_ajustado:
@@ -264,6 +284,7 @@ class TableWindow(QWidget):
             QMessageBox.information(self, "Éxito", "Diálogos ajustados correctamente.")
         except Exception as e:
             self.handle_exception(e, "Error al ajustar diálogos")
+
 
     def adjust_all_row_heights(self):
         for row in range(self.table_widget.rowCount()):
@@ -874,8 +895,6 @@ class TableWindow(QWidget):
         self.unsaved_changes = True
 
 
-
-
 # Clases de comandos para deshacer/rehacer
 class EditCommand(QUndoCommand):
     def __init__(self, table_window, row, column, old_value, new_value):
@@ -918,7 +937,7 @@ class EditCommand(QUndoCommand):
 
         # Actualizar la interfaz de usuario
         if self.column == self.table_window.COL_DIALOGUE:
-            # Actualizar el QTextEdit en la celda
+            # Actualizar el CustomTextEdit en la celda
             text_widget = self.table_window.table_widget.cellWidget(self.row, self.column)
             if text_widget:
                 text_widget.blockSignals(True)
@@ -1217,13 +1236,9 @@ class ChangeSceneCommand(QUndoCommand):
 
         # Almacenar los números de escena antiguos desde la fila seleccionada en adelante
         self.old_scene_numbers = self.table_window.dataframe['SCENE'].iloc[selected_row:].tolist()
-
-        # Determinar el nuevo número de escena
-        if selected_row > 0:
-            previous_scene_number = int(self.table_window.dataframe.at[selected_row - 1, 'SCENE'])
-            self.new_scene_number = previous_scene_number + 1
-        else:
-            self.new_scene_number = 1  # Comenzar desde 1 si es la primera fila
+        
+        # Calcular los nuevos números de escena incrementando cada uno en +1
+        self.new_scene_numbers = [scene + 1 for scene in self.old_scene_numbers]
 
     def undo(self):
         # Restaurar los números de escena antiguos
@@ -1243,14 +1258,16 @@ class ChangeSceneCommand(QUndoCommand):
     def redo(self):
         # Asignar el nuevo número de escena a todas las filas subsiguientes
         total_rows = self.table_window.table_widget.rowCount()
-        for row in range(self.selected_row, total_rows):
-            self.table_window.dataframe.at[row, 'SCENE'] = self.new_scene_number
+        for idx, row in enumerate(range(self.selected_row, total_rows)):
+            new_number = self.new_scene_numbers[idx]
+            self.table_window.dataframe.at[row, 'SCENE'] = new_number
             item = self.table_window.table_widget.item(row, self.table_window.COL_SCENE)
             if item:
-                item.setText(str(self.new_scene_number))
+                item.setText(str(new_number))
                 # Resaltar la fila seleccionada
                 if row == self.selected_row:
                     for col in range(self.table_window.table_widget.columnCount()):
                         cell_item = self.table_window.table_widget.item(row, col)
                         if cell_item:
                             cell_item.setBackground(QColor("#FFD700"))  # Amarillo dorado
+
