@@ -17,6 +17,7 @@ hidden_imports = collect_submodules('guion_editor') + [
     'guion_editor.widgets.find_replace_dialog',
     'guion_editor.widgets.custom_table_widget',
     'guion_editor.widgets.shortcut_config_dialog',
+    'guion_editor.widgets.custom_text_edit.py',
     'guion_editor.delegates.custom_delegates',
     'guion_editor.utils.dialog_utils',
     'guion_editor.utils.guion_manager',
